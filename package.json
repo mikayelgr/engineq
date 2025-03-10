@@ -1,7 +1,7 @@
 {
   "name": "engineq",
   "workspaces": [
-    "vui"
+    "ui"
   ],
   "scripts": {
     "dbmate": "dbmate -e POSTGRES_URL -d migrations",
