@@ -4,10 +4,28 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic.dataclasses import dataclass
-import discogs_client
-from pydantic import BaseModel, Field
-
+import requests
+from pydantic import Field
+from models import Tracks, Playlists, Suggestions
+from sqlalchemy import insert, select, func, literal_column
+from sqlalchemy.orm import Session
+from pydantic_ai import RunContext
 from conf import Config
+from pydantic import BaseModel
+import urllib.parse
+import json
+
+DISCOGS_PARAMS = {
+    "token": Config().DISCOGS_USER_TOKEN,
+    "per_page": 5
+}
+
+
+class WrappedSQLASession(BaseModel):
+    session: Session
+
+    class Config:
+        arbitrary_types_allowed = True
 
 
 @dataclass
@@ -23,13 +41,13 @@ class Track:
         False, description="Flag to indicate if the track is explicit.")
 
 
-class WorkflowOutput(BaseModel):
-    """
-    Dataclass representing the output of the workflow, which is a list of tracks.
-    """
+# class WorkflowOutput(BaseModel):
+#     """
+#     Dataclass representing the output of the workflow, which is a list of tracks.
+#     """
 
-    tracks: list[Track] = Field(...,
-                                description="The list of tracks in the playlist.")
+#     tracks: list[Track] = Field(...,
+#                                 description="The list of tracks in the playlist.")
 
 
 # We will be using a fallback model by default, since in the future we might change
@@ -43,11 +61,18 @@ model = FallbackModel(OpenAIModel(
 #     model = OpenAIModel("llama3.2:latest", provider=OpenAIProvider(
 #         api_key="ollama", base_url=Config().OLLAMA_URL))
 
+
+@dataclass
+class AgentDeps:
+    db: WrappedSQLASession
+    sid: int  # subscriber ID
+
+
 llm = Agent(
     model,
     system_prompt="""
     ## **Task**
-    Generate a **50-song playlist** as a table. **Output only the data. No explanations, introductions, or additional text.**
+    Generate a **4-song playlist** as a table. **Output only the data. No explanations, introductions, or additional text.**
 
     ## **Instructions**
     - The data must have exactly **50 rows** and **3 columns:**
@@ -65,15 +90,61 @@ llm = Agent(
     """,
     name="llm",
     retries=5,
+    deps_type=AgentDeps,
     result_retries=5,
-    result_type=WorkflowOutput)
-
-dcl = discogs_client.Client(
-    "ExampleApplication/0.1", user_token=Config().DISCOGS_USER_TOKEN)
+    result_type=bool)
 
 
-@llm.tool_plain(retries=3)
-def verify_tracks(tracks: list[Track]) -> list[Track]:
+def process_track(t: Track, ctx: RunContext[AgentDeps]):
+    search_response = requests.get("https://api.discogs.com/database/search?" +
+                                   urllib.parse.urlencode(DISCOGS_PARAMS) + '&' +
+                                   urllib.parse.urlencode({"title": t.title, "artist": t.artist}))
+    if search_response.status_code == 200:
+        search_response_json = json.loads(search_response.content)
+        if len(search_response_json["results"]) > 0:
+            try:
+                # Making sure that the playlist actually exists
+                ctx.deps.db.session.execute(insert(Playlists).values(
+                    sid=ctx.deps.sid)).scalar_one()
+            except:
+                # At this point we definitely know that a playlist exists
+                playlist = ctx.deps.db.session.execute(select(Playlists).where(
+                    Playlists.sid == ctx.deps.sid,
+                    # Playlists.created_at == func.now()
+                ).limit(1)).scalar_one()
+
+                release = None
+                for r in search_response_json["results"]:
+                    if r["type"] == "release":
+                        release = r
+                if release is not None:
+                    thumbnail = release["thumb"]
+                    uri = release["resource_url"]
+                    release_response = requests.get(
+                        uri + '?' + urllib.parse.urlencode(DISCOGS_PARAMS))
+                    if release_response.status_code == 200:
+                        release_response_json = json.loads(
+                            release_response.content)
+                        if len(release_response_json["videos"]) > 0:
+                            created_track = ctx.deps.db.session.execute(insert(Tracks).values(
+                                title=release_response_json["title"],
+                                artist=release_response_json["artists_sort"],
+                                explicit=t.explicit,
+                                duration=release_response_json["videos"][0]["duration"],
+                                uri=release_response_json["videos"][0]["uri"],
+                                image=thumbnail
+                            ).returning(literal_column('*'))).first()
+
+                            ctx.deps.db.session.execute(insert(Suggestions).values(
+                                pid=playlist.id,
+                                tid=created_track.id,
+                            ))
+
+    search_response.close()
+
+
+@llm.tool(retries=3)
+def verify_tracks(ctx: RunContext[AgentDeps], tracks: list[Track]) -> bool:
     """
     This tool is responsible for verifying whether a track in a list of tracks exists,
     or is just a hallucination by the LLM. This is for enhanced search, and avoiding
@@ -88,30 +159,21 @@ def verify_tracks(tracks: list[Track]) -> list[Track]:
         str: The response from the AI model.
     """
 
-    confirmed_tracks = []
-    for track in tracks:
-        search_results = dcl.search(
-            track.title, artist=track.artist, type="release")
-        if search_results.count > 0:
-            # Check if any result matches the track title and artist
-            for result in search_results:
-                if result.title.lower() == track.title.lower() and any(
-                    artist.name.lower() == track.artist.lower() for artist in result.artists
-                ):
-                    confirmed_tracks.append(track)
-                    break
+    for t in tracks:
+        process_track(t, ctx)
 
-    return WorkflowOutput(tracks=confirmed_tracks)
+    return True
 
 
-async def compose(message: str) -> WorkflowOutput | None:
+def compose(sid: int, message: str, dbs: WrappedSQLASession) -> bool | None:
     """
     Compose a playlist based on the given message.
     """
+    d = AgentDeps(dbs, sid)
 
     try:
-        r = await llm.run(message)
-        return r.data
+        task = asyncio.run(llm.run(message, deps=d))
+        return task.data
     except Exception as e:
         print(f"Error: {e}")
-        return None
+        return False

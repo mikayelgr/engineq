@@ -12,7 +12,7 @@ interface NavigationProps {
 
 export default function Navigation({ actions }: NavigationProps) {
   return (
-    <Navbar className="bg-gray-400 max-w-xl bg-opacity-20 my-4 mx rounded-full">
+    <Navbar className="bg-gray-400 w-full max-w-xl bg-opacity-20 mx rounded-full">
       <NavbarBrand>
         <Link
           className="flex hover:brightness-75 duration-100 ease-in-out items-center"

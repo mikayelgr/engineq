@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sql } from "./lib/sql";
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   // On-site request validation
@@ -16,9 +17,9 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 
   // Authentication
   const c = request.cookies.get("lck");
-  if (!c) {
+  if (!c || c.value.length === 0) {
     // In case of API routes, make sure that we can only send the request if authenticated
-    if (request.nextUrl.pathname.startsWith("/api")) {
+    if (request.nextUrl.pathname.includes("/api")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -30,5 +31,6 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
+  runtime: "nodejs",
   matcher: ["/dashboard/:path*", "/api/:path*"],
 };

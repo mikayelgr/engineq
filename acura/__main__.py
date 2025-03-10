@@ -1,27 +1,39 @@
-import models
+# AVOID MOVING THESE LINES TO OTHER PLACES AS THE PARSING OF THE
+# .ENV FILE FAILS IN MOST CASES DUE TO SOME REASONS.
+from dotenv import load_dotenv, find_dotenv  # nopep8
+load_dotenv(find_dotenv())  # nopep8
+
 import conf
-from sqlalchemy.ext.asyncio import create_async_engine
-from dotenv import load_dotenv, find_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+import amqp
+from mq import consume_message
 
-load_dotenv(find_dotenv())
 
-
-async def main():
-    print(conf.Config().__dict__)
+def main():
     # Connecting to the database
-    engine = create_async_engine(
-        "postgresql+asyncpg://"+conf.Config().POSTGRES_URL, echo=True)
-    async with engine.begin() as conn:
-        await conn.run_sync(models.Base.metadata.create_all)
+    engine = create_engine(conf.Config().POSTGRES_URL, echo=False, isolation_level="AUTOCOMMIT")
+    with Session(engine) as pg:
+        with amqp.Connection() as mq:
+            c = mq.channel()
 
-    await engine.dispose()
+            def consume(m: amqp.Message):
+                try:
+                    # Message handling is done separately
+                    consume_message(m, pg)
+                    # Acknowledging the request after processing, so that we don't
+                    # redeliver it the next time and waste resources on processing.
+                    c.basic_ack(m.delivery_tag)
+                except Exception as e:
+                    print(e)
+                    c.basic_reject(m.delivery_tag, requeue=False)
+
+            c.basic_consume(queue="acura", callback=consume)
+            while True:
+                mq.drain_events()
+
+    engine.dispose()  # Closing SQL connection
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(main())
-    finally:
-        loop.stop()
+    main()

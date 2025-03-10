@@ -11,13 +11,15 @@ export default async function Layout({
   return (
     <div className="w-full shadow-none flex items-center justify-center flex-col h-screen">
       <DashboardStoreProvider>
-        <Navigation actions={{ signout }} />
+        <div className="w-full mt-8 px-4 flex items-center justify-center">
+          <Navigation actions={{ signout }} />
+        </div>
 
         {/* Content area */}
-        <div className="flex-1 w-full overflow-hidden max-h-[35rem]">
+        <div className="flex-1 pt-4 pb-4 w-full overflow-hidden h-full">
           {/* This wrapper ensures the content below navbar is scrollable */}
           <div className="h-full w-full overflow-y-auto">
-            <ScrollShadow className="w-full h-full">{children}</ScrollShadow>
+            <ScrollShadow className="w-full h-full p-4">{children}</ScrollShadow>
           </div>
         </div>
       </DashboardStoreProvider>

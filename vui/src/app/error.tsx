@@ -31,7 +31,7 @@ export default function Error({
             An unexpected error occurred. Please try again.
           </p>
           <Button
-            onClick={reset}
+            onPress={reset}
             color="primary"
             className="w-full py-2 text-lg"
           >

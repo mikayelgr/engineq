@@ -39,3 +39,7 @@ class Config:
             self.POSTGRES_URL = os.getenv("POSTGRES_URL")
 
             self.initialized = True
+
+            if self.PYTHON_ENV != "production":
+                print(self.__dict__)
+                print("-" * 50)

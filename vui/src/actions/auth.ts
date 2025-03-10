@@ -1,6 +1,6 @@
 "use server";
 
-import { sql } from "@/src/lib/db";
+import { sql } from "@/src/lib/sql";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -15,8 +15,7 @@ export async function signin(
   form: FormData
 ): Promise<{ error: string } | null> {
   const key = form.get("key")?.toString();
-  console.log(key);
-  if (!key) {
+  if (!key || key.length === 0) {
     return { error: "Please provide a valid key." };
   }
 
@@ -28,7 +27,7 @@ export async function signin(
 
     const sub = subs[0];
     const c = await cookies();
-    c.set(LICENSE_COOKIE_NAME, sub.key, { httpOnly: true });
+    c.set(LICENSE_COOKIE_NAME, sub.license, { httpOnly: true });
   } catch (error) {
     console.error(error);
     return { error: "Please provide a valid key." };

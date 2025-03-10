@@ -38,8 +38,10 @@ export default async function RootLayout({
         )}
       >
         <Providers themeProps={{ attribute: "class", defaultTheme: "dark" }}>
-          <main className="h-screen w-full">
-            <div className="max-w-5xl mx-auto rounded-lg">{children}</div>
+          <main className="h-screen w-full flex items-center justify-center">
+            <div className="w-full sm:max-w-4xl md:max-w-5xl rounded-lg">
+              {children}
+            </div>
           </main>
         </Providers>
       </body>

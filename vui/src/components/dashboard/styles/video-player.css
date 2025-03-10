@@ -1,0 +1,5 @@
+iframe {
+  aspect-ratio: 16 / 9;
+  width: 100% !important;
+  @apply rounded-md h-[20rem];
+}
