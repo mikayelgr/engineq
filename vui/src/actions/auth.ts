@@ -1,0 +1,44 @@
+"use server";
+
+import { sql } from "@/src/lib/db";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+
+const LICENSE_COOKIE_NAME = "lck";
+
+export async function check() {
+  const c = await cookies();
+  return c.get(LICENSE_COOKIE_NAME) !== null;
+}
+
+export async function signin(
+  form: FormData
+): Promise<{ error: string } | null> {
+  const key = form.get("key")?.toString();
+  console.log(key);
+  if (!key) {
+    return { error: "Please provide a valid key." };
+  }
+
+  try {
+    const subs = await sql`SELECT * FROM subscribers WHERE license = ${key}`;
+    if (subs.length === 0) {
+      return { error: "License key not found." };
+    }
+
+    const sub = subs[0];
+    const c = await cookies();
+    c.set(LICENSE_COOKIE_NAME, sub.key, { httpOnly: true });
+  } catch (error) {
+    console.error(error);
+    return { error: "Please provide a valid key." };
+  }
+
+  redirect("/dashboard"); // Never put redirects in try/catch, because they work by throwing errors
+}
+
+export async function signout() {
+  const c = await cookies();
+  c.delete(LICENSE_COOKIE_NAME);
+  redirect("/");
+}

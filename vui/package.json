@@ -1,0 +1,39 @@
+{
+  "name": "next-app-template",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@datastructures-js/queue": "^4.2.3",
+    "@heroui/react": "^2.7.5",
+    "clsx": "2.1.1",
+    "framer-motion": "11.13.1",
+    "lucide-react": "^0.479.0",
+    "next": "15.0.4",
+    "next-themes": "^0.4.4",
+    "postgres": "^3.4.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-player": "^2.16.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@next/eslint-plugin-next": "15.0.4",
+    "@react-types/shared": "3.25.0",
+    "@types/node": "20.5.7",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "@typescript-eslint/eslint-plugin": "8.11.0",
+    "@typescript-eslint/parser": "8.11.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.49",
+    "prettier": "3.3.3",
+    "tailwind-variants": "0.3.0",
+    "tailwindcss": "3.4.16",
+    "typescript": "5.6.3"
+  }
+}
