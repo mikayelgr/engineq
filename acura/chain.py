@@ -89,7 +89,6 @@ agent = Agent(
     - **Use only real, commercially available songs.**
 
     Try hard to generate unique, trendy, and sometimes even hard to find releases.
-    ```
     """,
     name="llm",
     retries=5,
