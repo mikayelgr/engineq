@@ -4,15 +4,21 @@ import { useDashboardStore } from "@/src/providers/dashboard/dashboard-store-pro
 import PlaybackControl from "./playback-control";
 import PlaybackQueueTrack from "./playback-queue-track";
 import { ScrollShadow, Spinner } from "@heroui/react";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function PlaybackQueue() {
-  const { queue, currentTrackId, setQueue } = useDashboardStore((s) => s);
+  const { queue, currentTrackId, addToQueue } = useDashboardStore((s) => s);
+
   const [isFetching, setIsFetching] = useState(false);
   const initialLoadComplete = useRef(false);
+  const lastQueueLength = useRef(0);
+  const fetchingRef = useRef(false);
 
   async function loadTracks(ctid: string | null = null) {
-    if (isFetching) return; // Prevent concurrent fetches
+    // Use ref to track fetching state to prevent race conditions
+    if (fetchingRef.current) return;
+
+    fetchingRef.current = true;
     setIsFetching(true);
 
     try {
@@ -21,39 +27,52 @@ export default function PlaybackQueue() {
       );
       const latest = await request.json();
 
-      // Deduplicate tracks based on track ID
-      const existingIds = new Set(queue.map((track) => track.id));
-      const newTracks = latest.filter((track: any) => !existingIds.has(track.id));
+      // Update the last queue length ref to prevent infinite loops
+      lastQueueLength.current =
+        queue.length +
+        latest.filter((track) => {
+          // Quick duplicate check for length estimation
+          return !queue.some((q) => q.id === track.id);
+        }).length;
 
-      if (newTracks.length > 0) {
-        setQueue([...queue, ...newTracks]);
-      }
+      // Use the addToQueue method which handles deduplication internally
+      addToQueue(latest);
     } catch (error) {
       console.error("Error loading tracks:", error);
     } finally {
       setIsFetching(false);
+      fetchingRef.current = false;
     }
   }
 
+  // Initial load effect
   useEffect(() => {
-    // Only load tracks once on initial render
     if (!initialLoadComplete.current) {
       loadTracks();
       initialLoadComplete.current = true;
     }
   }, []);
 
+  // Effect for loading more tracks when needed
   useEffect(() => {
-    // Only load more tracks when queue is running low and not in initial loading
+    // Only proceed if initial load is done, not currently fetching,
+    // and we're not caught in an infinite loop (queue length changed)
     if (
       initialLoadComplete.current &&
       queue.length <= 10 &&
       currentTrackId >= 0 &&
-      !isFetching
+      !fetchingRef.current &&
+      queue.length !== lastQueueLength.current
     ) {
       loadTracks();
     }
-  }, [currentTrackId, queue.length, isFetching]);
+
+    // Update lastQueueLength to current value whenever queue changes
+    // This prevents the effect from running again if the fetch didn't add new items
+    if (queue.length !== lastQueueLength.current) {
+      lastQueueLength.current = queue.length;
+    }
+  }, [queue.length, currentTrackId]);
 
   return (
     <div className="h-[20rem] w-full md:w-[24rem] rounded-md border-gray-600 bg-secondary-100 bg-opacity-40">

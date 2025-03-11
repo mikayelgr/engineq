@@ -17,6 +17,7 @@ export type DashboardState = {
   isPlaying: boolean;
   currentTrackId: number;
   currentTrack: Track | null;
+  lastFetchTimestamp: number; // New field to track when we last fetched
 };
 
 export type DashboardActions = {
@@ -24,7 +25,9 @@ export type DashboardActions = {
   pause: () => void;
   next: () => void;
   setQueue: (tracks: Track[]) => void;
+  addToQueue: (tracks: Track[]) => void; // New method to properly add tracks
   setCurrentTrackId: (id: number) => void;
+  updateLastFetchTimestamp: () => void; // New method to update fetch timestamp
 };
 
 export type DashboardStore = DashboardState & DashboardActions;
@@ -34,6 +37,7 @@ export const defaultInitState: DashboardState = {
   isPlaying: false,
   currentTrack: null,
   currentTrackId: -1,
+  lastFetchTimestamp: 0,
 };
 
 export const createDashboardStore = (
@@ -62,6 +66,7 @@ export const createDashboardStore = (
                   queue: tracks,
                   currentTrackId: tracks[0]?.id ?? -1,
                   currentTrack: tracks[0] ?? null,
+                  lastFetchTimestamp: Date.now(),
                 };
               }
               
@@ -71,10 +76,41 @@ export const createDashboardStore = (
                 // Don't change currentTrackId if already playing something
                 currentTrackId: s.currentTrackId >= 0 ? s.currentTrackId : tracks[0]?.id ?? -1,
                 currentTrack: s.currentTrack ?? tracks[0] ?? null,
+                lastFetchTimestamp: Date.now(),
               };
             },
             undefined,
             "dashboard-store/setQueue"
+          ),
+        addToQueue: (newTracks) =>
+          set(
+            (state) => {
+              // Deduplicate tracks based on track ID
+              const existingIds = new Set(state.queue.map((track) => track.id));
+              const filteredTracks = newTracks.filter((track) => !existingIds.has(track.id));
+              
+              if (filteredTracks.length === 0) {
+                return {}; // No changes if no new tracks
+              }
+              
+              const updatedQueue = [...state.queue, ...filteredTracks];
+              
+              return {
+                queue: updatedQueue,
+                currentTrackId: state.currentTrackId >= 0 ? state.currentTrackId : updatedQueue[0]?.id ?? -1,
+                currentTrack: state.currentTrack ?? updatedQueue[0] ?? null,
+              };
+            },
+            undefined,
+            "dashboard-store/addToQueue"
+          ),
+        updateLastFetchTimestamp: () =>
+          set(
+            () => ({
+              lastFetchTimestamp: Date.now(),
+            }),
+            undefined,
+            "dashboard-store/updateLastFetchTimestamp"
           ),
         pause: () =>
           set(() => ({ isPlaying: false }), undefined, "dashboard-store/pause"),

@@ -26,6 +26,7 @@ export default function PlaybackQueueTrack(props: PlaybackQueueTrackProps) {
           alt="heroui logo"
           height={40}
           radius="sm"
+          className="w-40"
           src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRfr1IXhAWefDdclacaEwS8VXBQ02xNeoHPog&s"
           width={40}
         />

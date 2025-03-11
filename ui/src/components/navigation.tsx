@@ -1,7 +1,13 @@
 "use client";
 
-import { Button, Navbar, NavbarBrand, NavbarContent } from "@heroui/react";
-import { Disc, LogOut } from "lucide-react";
+import {
+  Button,
+  Navbar,
+  NavbarBrand,
+  NavbarContent,
+  NavbarItem,
+} from "@heroui/react";
+import { Disc, LogOut, Phone } from "lucide-react";
 import Link from "next/link";
 
 interface NavigationProps {
@@ -22,7 +28,13 @@ export default function Navigation({ actions }: NavigationProps) {
           <p className="font-semibold px-2 text-inherit">EngineQ</p>
         </Link>
       </NavbarBrand>
-      <NavbarContent justify="end">
+      <NavbarContent justify="end" className="gap-4">
+        <NavbarItem>
+          <div className="flex items-center text-gray-500 text-xs">
+            <Phone size={12} className="mr-1" />
+            <span>Support: +374 33 999 461</span>
+          </div>
+        </NavbarItem>
         <Button
           size="sm"
           onPress={() => actions.signout()}
