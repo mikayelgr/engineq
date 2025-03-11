@@ -16,5 +16,5 @@ def consume_message(m: amqp.Message, pg: Session):
     if s is None:
         raise Exception("No subscriber found with the given license")
 
-    if not chain.compose(s.id, b["prompt"], chain.WrappedSQLASession(session=pg)):
+    if chain.compose(s.id, b["prompt"], chain.WrappedSQLASession(session=pg)) is None:
         raise Exception("Something wrong happened during generation...")

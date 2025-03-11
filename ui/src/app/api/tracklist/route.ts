@@ -14,6 +14,7 @@ async function getRemainingSuggestionsCount(lck: string) {
     LEFT JOIN playback pb ON pb.sid = sub.id
     WHERE p.id = COALESCE(pb.last_pid, p.id) 
       AND sub.license = ${lck}
+      AND p.created_at = CURRENT_DATE
       AND (
         -- If this is the same playlist they were on before, start after their last position
         (p.id = pb.last_pid AND sug.added_at >= (
@@ -51,9 +52,9 @@ export async function GET(request: NextRequest) {
     await sql`
 SELECT t.*, sug.added_at 
 FROM playlists p
-JOIN suggestions sug ON sug.pid = p.id
-JOIN tracks t ON sug.tid = t.id
-JOIN subscribers sub ON sub.id = p.sid
+LEFT JOIN suggestions sug ON sug.pid = p.id
+LEFT JOIN tracks t ON sug.tid = t.id
+LEFT JOIN subscribers sub ON sub.id = p.sid
 LEFT JOIN playback pb ON pb.sid = sub.id
 WHERE p.created_at = CURRENT_DATE
   AND sub.license = ${lck}

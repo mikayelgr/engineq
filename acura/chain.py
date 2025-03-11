@@ -105,12 +105,14 @@ def process_track(t: Track, ctx: RunContext[AgentDeps]):
             try:
                 # Making sure that the playlist actually exists
                 ctx.deps.db.session.execute(insert(Playlists).values(
-                    sid=ctx.deps.sid)).scalar_one()
+                    sid=ctx.deps.sid,
+                    created_at=func.current_date()
+                )).scalar_one()
             except:
                 # At this point we definitely know that a playlist exists
                 playlist = ctx.deps.db.session.execute(select(Playlists).where(
                     Playlists.sid == ctx.deps.sid,
-                    # Playlists.created_at == func.now()
+                    Playlists.created_at == func.current_date()
                 ).limit(1)).scalar_one()
 
                 release = None
@@ -126,14 +128,22 @@ def process_track(t: Track, ctx: RunContext[AgentDeps]):
                         release_response_json = json.loads(
                             release_response.content)
                         if len(release_response_json["videos"]) > 0:
-                            created_track = ctx.deps.db.session.execute(insert(Tracks).values(
-                                title=release_response_json["title"],
-                                artist=release_response_json["artists_sort"],
-                                explicit=t.explicit,
-                                duration=release_response_json["videos"][0]["duration"],
-                                uri=release_response_json["videos"][0]["uri"],
-                                image=thumbnail
-                            ).returning(literal_column('*'))).first()
+                            created_track = None
+                            try:
+                                created_track = ctx.deps.db.session.execute(insert(Tracks).values(
+                                    title=release_response_json["title"],
+                                    artist=release_response_json["artists_sort"],
+                                    explicit=t.explicit,
+                                    duration=release_response_json["videos"][0]["duration"],
+                                    uri=release_response_json["videos"][0]["uri"],
+                                    image=thumbnail
+                                ).returning(literal_column('*'))).first()
+                            except:
+                                # In case the track already exists
+                                created_track = ctx.deps.db.session.execute(select(Tracks).where(
+                                    Tracks.title == release_response_json["title"],
+                                    Tracks.artist == release_response_json["artists_sort"]
+                                )).scalar_one()
 
                             ctx.deps.db.session.execute(insert(Suggestions).values(
                                 pid=playlist.id,
@@ -176,4 +186,4 @@ def compose(sid: int, message: str, dbs: WrappedSQLASession) -> bool | None:
         return task.data
     except Exception as e:
         print(f"Error: {e}")
-        return False
+        return None
