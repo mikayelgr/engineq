@@ -1,4 +1,3 @@
-import asyncio
 from pydantic_ai import Agent
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.models.openai import OpenAIModel
@@ -8,7 +7,7 @@ import requests
 from pydantic import Field
 from models import Tracks, Playlists, Suggestions
 from sqlalchemy import insert, select, func, literal_column
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncConnection
 from pydantic_ai import RunContext
 from conf import Config
 from pydantic import BaseModel
@@ -22,7 +21,7 @@ DISCOGS_PARAMS = {
 
 
 class WrappedSQLASession(BaseModel):
-    session: Session
+    session: AsyncConnection
 
     class Config:
         arbitrary_types_allowed = True
@@ -97,7 +96,7 @@ agent = Agent(
     result_type=bool)
 
 
-def process_track(t: Track, ctx: RunContext[AgentDeps]):
+async def process_track(ctx: RunContext[AgentDeps], t: Track):
     search_response = requests.get("https://api.discogs.com/database/search?" +
                                    urllib.parse.urlencode(DISCOGS_PARAMS) + '&' +
                                    urllib.parse.urlencode({"title": t.title, "artist": t.artist}))
@@ -156,7 +155,7 @@ def process_track(t: Track, ctx: RunContext[AgentDeps]):
 
 
 @agent.tool(retries=3)
-def verify_tracks(ctx: RunContext[AgentDeps], tracks: list[Track]) -> bool:
+async def verify_tracks(ctx: RunContext[AgentDeps], tracks: list[Track]) -> bool:
     """
     This tool is responsible for verifying whether a track in a list of tracks exists,
     or is just a hallucination by the LLM. This is for enhanced search, and avoiding
@@ -172,20 +171,19 @@ def verify_tracks(ctx: RunContext[AgentDeps], tracks: list[Track]) -> bool:
     """
 
     for t in tracks:
-        process_track(t, ctx)
+        await process_track(t, ctx)
 
     return True
 
 
-def compose(sid: int, message: str, dbs: WrappedSQLASession) -> bool | None:
+async def compose(sid: int, message: str, dbs: WrappedSQLASession) -> bool | None:
     """
     Compose a playlist based on the given message.
     """
     d = AgentDeps(dbs, sid)
 
     try:
-        task = asyncio.run(agent.run(message, deps=d))
+        task = await agent.run(message, deps=d)
         return task.data
     except Exception as e:
-        print(f"Error: {e}")
-        return None
+        raise Exception("Error during playlist generation: ", e)

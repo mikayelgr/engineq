@@ -15,7 +15,7 @@ dependencies = [
     "asyncpg (>=0.30.0,<0.31.0)",
     "sqlacodegen (>=3.0.0,<4.0.0)",
     "psycopg2-binary (>=2.9.10,<3.0.0)",
-    "amqp (>=5.3.1,<6.0.0)",
+    "aio-pika (>=9.5.5,<10.0.0)",
 ]
 
 
