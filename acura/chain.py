@@ -68,7 +68,7 @@ class AgentDeps:
     sid: int  # subscriber ID
 
 
-llm = Agent(
+agent = Agent(
     model,
     system_prompt="""
     ## **Task**
@@ -81,11 +81,14 @@ llm = Agent(
     - **"Explicit"** (`True` if explicit, otherwise `False`)
 
     - **Song selection criteria:**
+    - **Avoid being too generic.**
     - **Balance mainstream and lesser-known tracks.**
     - **Include recent songs (2023-2025) when relevant.**
     - **Mark explicit songs correctly.** Assume `False` if uncertain.
     - **Ensure smooth flow** (no jarring genre/mood shifts).
     - **Use only real, commercially available songs.**
+
+    Try hard to generate unique, trendy, and sometimes even hard to find releases.
     ```
     """,
     name="llm",
@@ -153,7 +156,7 @@ def process_track(t: Track, ctx: RunContext[AgentDeps]):
     search_response.close()
 
 
-@llm.tool(retries=3)
+@agent.tool(retries=3)
 def verify_tracks(ctx: RunContext[AgentDeps], tracks: list[Track]) -> bool:
     """
     This tool is responsible for verifying whether a track in a list of tracks exists,
@@ -182,7 +185,7 @@ def compose(sid: int, message: str, dbs: WrappedSQLASession) -> bool | None:
     d = AgentDeps(dbs, sid)
 
     try:
-        task = asyncio.run(llm.run(message, deps=d))
+        task = asyncio.run(agent.run(message, deps=d))
         return task.data
     except Exception as e:
         print(f"Error: {e}")
