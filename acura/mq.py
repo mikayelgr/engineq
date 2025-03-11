@@ -16,7 +16,7 @@ async def consume(msg: aio_pika.abc.AbstractIncomingMessage, pg: AsyncConnection
         raise Exception("License key was not provided")
 
     r = await pg.execute(db.select(Subscribers).where(Subscribers.license == b["license"]))
-    s = r.scalars().one()
+    s = r.one()
     if s is None:
         raise Exception("No subscriber found with the given license")
 
