@@ -55,10 +55,24 @@ export const createDashboardStore = (
           ), // automatically removing the first played element
         setQueue: (tracks) =>
           set(
-            (s) => ({
-              queue: tracks,
-              currentTrackId: s.queue.length === 0 ? tracks[0]?.id : -1,
-            }),
+            (s) => {
+              // Handle initial queue population
+              if (s.queue.length === 0) {
+                return {
+                  queue: tracks,
+                  currentTrackId: tracks[0]?.id ?? -1,
+                  currentTrack: tracks[0] ?? null,
+                };
+              }
+              
+              // Handle adding tracks to existing queue
+              return {
+                queue: tracks,
+                // Don't change currentTrackId if already playing something
+                currentTrackId: s.currentTrackId >= 0 ? s.currentTrackId : tracks[0]?.id ?? -1,
+                currentTrack: s.currentTrack ?? tracks[0] ?? null,
+              };
+            },
             undefined,
             "dashboard-store/setQueue"
           ),
