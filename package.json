@@ -1,8 +1,6 @@
 {
   "name": "engineq",
-  "workspaces": [
-    "ui"
-  ],
+  "private": true,
   "scripts": {
     "dbmate": "dbmate -e POSTGRES_URL -d migrations",
     "postdbmate": "cd acura && ./scripts/sqlcodegen.sh > ./models.py"
