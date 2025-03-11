@@ -30,7 +30,7 @@ export default function PlaybackQueue() {
       // Update the last queue length ref to prevent infinite loops
       lastQueueLength.current =
         queue.length +
-        latest.filter((track) => {
+        latest.filter((track: any) => {
           // Quick duplicate check for length estimation
           return !queue.some((q) => q.id === track.id);
         }).length;
