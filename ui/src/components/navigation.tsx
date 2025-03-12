@@ -25,24 +25,39 @@ export default function Navigation({ actions }: NavigationProps) {
           href={"/dashboard"}
         >
           <Disc size={32} />
-          <p className="font-semibold px-2 text-inherit">EngineQ</p>
+          <p className="font-semibold px-2 text-inherit hidden sm:inline">
+            EngineQ
+          </p>
         </Link>
       </NavbarBrand>
-      <NavbarContent justify="end" className="gap-4">
-        <NavbarItem>
-          <div className="flex items-center text-gray-500 text-xs">
+      <NavbarContent justify="end" className="gap-2 sm:gap-4">
+        {/* Phone display for xs screens and up */}
+        <NavbarItem className="hidden md:block">
+          <Link
+            href={"tel:+37433999461"}
+            className="flex items-center text-gray-500 text-xs"
+          >
             <Phone size={12} className="mr-1" />
-            <span>Support: +374 33 999 461</span>
-          </div>
+            <span className="hidden md:inline">Support: +374 33 999 461</span>
+            <span className="inline md:hidden">+374 33 999 461</span>
+          </Link>
+        </NavbarItem>
+        {/* Phone icon only for smallest screens */}
+        <NavbarItem className="md:hidden">
+          <Link href="tel:+37433999461" className="text-gray-500">
+            <Phone size={16} />
+          </Link>
         </NavbarItem>
         <Button
           size="sm"
           onPress={() => actions.signout()}
           startContent={<LogOut size={14} />}
           variant="flat"
-          color="default"
+          color="danger"
+          className="min-w-0 px-2 xs:min-w-[60px] sm:px-3"
         >
-          Sign Out
+          <span className="hidden xs:inline sm:hidden">Exit</span>
+          <span className="hidden sm:inline">Sign Out</span>
         </Button>
       </NavbarContent>
     </Navbar>

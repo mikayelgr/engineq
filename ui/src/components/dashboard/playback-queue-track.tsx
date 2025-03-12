@@ -7,7 +7,7 @@ interface PlaybackQueueTrackProps extends Track {
   asSkeleton?: boolean;
 }
 
-const truncateString = (string = "", maxLength = 25) =>
+const truncateString = (string = "", maxLength = 20) =>
   string.length > maxLength ? `${string.substring(0, maxLength)}…` : string;
 
 export default function PlaybackQueueTrack(props: PlaybackQueueTrackProps) {
