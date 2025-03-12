@@ -171,7 +171,7 @@ async def verify_tracks(ctx: RunContext[AgentDeps], tracks: list[Track]) -> bool
     """
 
     for t in tracks:
-        await process_track(t, ctx)
+        await process_track(ctx, t)
 
     return True
 
