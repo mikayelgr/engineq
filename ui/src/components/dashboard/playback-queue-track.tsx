@@ -7,6 +7,9 @@ interface PlaybackQueueTrackProps extends Track {
   asSkeleton?: boolean;
 }
 
+const truncateString = (string = "", maxLength = 25) =>
+  string.length > maxLength ? `${string.substring(0, maxLength)}…` : string;
+
 export default function PlaybackQueueTrack(props: PlaybackQueueTrackProps) {
   const { currentTrackId, setCurrentTrackId } = useDashboardStore((s) => s);
 
@@ -33,7 +36,7 @@ export default function PlaybackQueueTrack(props: PlaybackQueueTrackProps) {
 
         <div className="flex flex-col items-start">
           <div className="flex w-fit flex-row gap-1 items-center">
-            <p className="text-md w-fit text-left">{props.title}</p>
+            <p className="text-md w-fit text-left">{truncateString(props.title)}</p>
             {props.explicit && (
               <p className="text-xs w-[1rem] h-[1rem] flex items-center justify-center rounded-sm bg-gray-500 text-white font-bold">
                 E
@@ -41,7 +44,7 @@ export default function PlaybackQueueTrack(props: PlaybackQueueTrackProps) {
             )}
           </div>
 
-          <p className="text-small text-default-500">{props.artist}</p>
+          <p className="text-small text-default-500">{truncateString(props.artist)}</p>
         </div>
       </CardHeader>
     </Card>
