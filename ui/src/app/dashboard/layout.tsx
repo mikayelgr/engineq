@@ -19,7 +19,9 @@ export default async function Layout({
         <div className="flex-1 pt-4 pb-4 w-full overflow-hidden h-full">
           {/* This wrapper ensures the content below navbar is scrollable */}
           <div className="h-full w-full overflow-y-auto">
-            <ScrollShadow className="w-full h-full p-4">{children}</ScrollShadow>
+            <ScrollShadow className="w-full h-full p-4">
+              {children}
+            </ScrollShadow>
           </div>
         </div>
       </DashboardStoreProvider>
