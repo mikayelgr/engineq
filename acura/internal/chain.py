@@ -1,6 +1,6 @@
+from spotipy import SpotifyClientCredentials
 from pydantic_ai import Agent
 from pydantic.dataclasses import dataclass
-from pydantic import Field
 from internal.models import Prompts, Tracks
 from sqlalchemy import insert, select, func, literal_column
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -9,43 +9,24 @@ from pydantic import BaseModel
 from spotipy import Spotify
 from datetime import datetime
 from internal.models import Playlists, Suggestions
-
-# DISCOGS_SEARCH_PARAMS = {
-#     "headers": 5,
-#     "token": 'AHNzflVBnMrTsCzARRwHjMbBDVAJUjvIeXoEkTQF',
-# }
-
-# BRAVE_SEARCH_HEADERS = {
-#     "Accept": "application/json",
-#     "X-Subscription-Token": 'BSAPHppWGfLPL_YjH_IcgqlycPXXgZ-'
-# }
+from httpx import AsyncClient
+import internal.conf
 
 
-class WrappedSpotifyClient(BaseModel):
-    conn: Spotify
-
-    class Config:
-        arbitrary_types_allowed = True
-
-
-class WrappedSQLAClient(BaseModel):
-    conn: AsyncConnection
-
-    class Config:
-        arbitrary_types_allowed = True
-
-
-@dataclass
-class AgentDeps:
+class AgentDeps(BaseModel):
     sid: int  # subscriber ID
-    pg: WrappedSQLAClient
-    spotipy: WrappedSpotifyClient  # authenticated spotipy object
+    pg: AsyncConnection
+    http: AsyncClient
+    conf: internal.conf.Config
+    spotipy: Spotify  # authenticated spotipy object
+
+    class Config:
+        arbitrary_types_allowed = True
 
 
 @dataclass
 class AgentOutput:
-    finished: bool = Field(...,
-                           title="Whether the agent has finished its execution")
+    finished: bool
 
 
 agent = Agent(
@@ -76,68 +57,77 @@ __ADDITIONAL CONTEXT__
 
 
 @agent.tool(retries=3)
-async def search_spotify(
-    ctx: RunContext[AgentDeps],
-    query: str,
-    offset: str = 0,
-) -> AgentOutput:
-    """
-    Search for tracks on Spotify based on the given query and offset.
-    """
-
-    spotify_tracks_response = ctx.deps.spotipy.conn.search(
-        query, limit=20, offset=offset, type="track")
+async def search_spotify(ctx: RunContext[AgentDeps], query: str) -> AgentOutput:
+    spotify_tracks_response = ctx.deps.spotipy.search(
+        query, limit=20, type="track")
     for t in spotify_tracks_response["tracks"]["items"]:
-        if not t["is_playable"]:
-            continue
-
-        try:
-            # Making sure that the playlist actually exists
-            r = await ctx.deps.pg.conn.execute(insert(Playlists).values(
-                sid=ctx.deps.sid,
-                created_at=func.current_date()
-            ).returning(literal_column("id")))
-        except:
-            r = await ctx.deps.pg.conn.execute(select(Playlists).where(
-                Playlists.sid == ctx.deps.sid).where(
-                Playlists.created_at == func.current_date()))
-
-        playlist = r.one()
-        try:
-            qr = await ctx.deps.pg.conn.execute(insert(Tracks).values(
-                title=t["name"],
-                artist=t["artists"][0]["name"],
-                explicit=t["explicit"],
-                duration=t["duration_ms"] / 1000,
-                uri=f"https://open.spotify.com/embed/{t['uri'].split(':')[1]}/{t['uri'].split(':')[2]}",
-                image=t["album"]["images"][0]["url"]
-            ).returning(literal_column('*')))
-            added_track = qr.one()
-
-            await ctx.deps.pg.conn.execute(insert(Suggestions).values(
-                pid=playlist.id,
-                tid=added_track.id,
-            ))
-        except Exception as e:
-            print(f"Error during track insertion: {e}")
-            pass
+        if t["is_playable"]:
+            playlist = await __create_or_get_playlist(ctx.deps.pg, ctx.deps.sid)
+            track = await __create_track_from_spotify(ctx.deps.pg, t)
+            if track is not None:
+                await __add_track_to_playlist(ctx.deps.pg, playlist.id, track.id)
 
     return AgentOutput(finished=True)
 
 
-async def compose(sid: int, pg: WrappedSQLAClient):
+async def compose(sid: int, pg: AsyncConnection, conf: internal.conf.Config):
     try:
-        from spotipy import SpotifyClientCredentials
-        spotipy = WrappedSpotifyClient(conn=Spotify(
+        spotipy = Spotify(
             auth_manager=SpotifyClientCredentials(
-                client_id="5d457b1b27d844ffa4419dfb5829c41a",
-                client_secret="c266ecf55e5b4f0b8fa03293275b1ffa"
+                client_id=conf.SPOTIFY_CLIENT_ID,
+                client_secret=conf.SPOTIFY_CLIENT_SECRET
             )
-        ))
+        )
 
-        d = AgentDeps(pg=pg, sid=sid, spotipy=spotipy)
-        r = await pg.conn.execute(select(Prompts).where(Prompts.sid == sid))
-        p = r.one()
-        await agent.run(p.prompt, deps=d)
+        prompt = await __get_subscriber_prompt(pg, sid)
+        if prompt is None:
+            raise Exception(
+                "No prompt found for the subscriber. At least one needs to be configured.")
+
+        async with AsyncClient() as http:
+            await agent.run(prompt, deps=AgentDeps(pg, sid, spotipy, http))
     except Exception as e:
         raise Exception(f"Error during playlist generation: {e}")
+
+
+async def __get_subscriber_prompt(conn: AsyncConnection, sid: int) -> Prompts | None:
+    try:
+        r = await conn.execute(select(Prompts).where(Prompts.sid == sid))
+        return r.one().prompt
+    except:
+        return None
+
+
+async def __add_track_to_playlist(conn: AsyncConnection, pid: int, tid: int) -> Suggestions:
+    r = await conn.execute(insert(Suggestions).values(
+        pid=pid, tid=tid
+    ).returning(literal_column('*')))
+    return r.one()
+
+
+async def __create_track_from_spotify(conn: AsyncConnection, t: dict) -> Tracks | None:
+    try:
+        r = await conn.execute(insert(Tracks).values(
+            title=t["name"],
+            artist=t["artists"][0]["name"],
+            explicit=t["explicit"],
+            duration=t["duration_ms"] / 1000,
+            uri=f"https://open.spotify.com/embed/{t['uri'].split(':')[1]}/{t['uri'].split(':')[2]}",
+            image=t["album"]["images"][0]["url"]
+        ).returning(literal_column('*')))
+        return r.one()
+    except:
+        return None
+
+
+async def __create_or_get_playlist(conn: AsyncConnection, sid: int) -> Playlists:
+    try:
+        # Making sure that the playlist actually exists
+        r = await conn.execute(insert(Playlists).values(
+            sid=sid, created_at=func.current_date()
+        ).returning(literal_column("id")))
+    except:
+        r = await conn.execute(select(Playlists).where(
+            Playlists.sid == sid).where(
+            Playlists.created_at == func.current_date()))
+    return r.one()

@@ -4,9 +4,10 @@ from internal.models import Subscribers
 import internal.chain as chain
 from sqlalchemy.ext.asyncio import AsyncConnection
 import aio_pika
+import internal.conf
 
 
-async def consume(msg: aio_pika.abc.AbstractIncomingMessage, pg: AsyncConnection):
+async def consume(msg: aio_pika.abc.AbstractIncomingMessage, pg: AsyncConnection, conf: internal.conf.Config):
     try:
         parsed_message = json.loads(msg.body)
     except:
@@ -21,6 +22,6 @@ async def consume(msg: aio_pika.abc.AbstractIncomingMessage, pg: AsyncConnection
         raise Exception("No subscriber found with the given license")
 
     try:
-        await chain.compose(s.id, chain.WrappedSQLAClient(conn=pg))
+        await chain.compose(s.id, conf, pg)
     except Exception as e:
         raise Exception(f"Something wrong happened during generation: {e}")

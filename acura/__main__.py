@@ -9,22 +9,25 @@ import aio_pika
 import asyncio
 from pydantic_ai import Agent
 import logfire
+from internal.conf import Config
+
+conf = Config()
 
 
 async def main():
     try:
         # Connecting to the database
-        sql_conn = create_async_engine("postgresql+asyncpg://postgres:postgres@localhost:5431/engineq",
-                                       echo=False, isolation_level="AUTOCOMMIT")
+        sql_conn = create_async_engine(
+            conf.POSTGRES_URL, echo=conf.DEBUG, isolation_level="AUTOCOMMIT")
         async with sql_conn.begin() as pg:
-            async with await aio_pika.connect_robust("amqp://guest:guest@localhost:5672/") as mq:
+            async with await aio_pika.connect_robust(conf.AMQP_URL) as mq:
                 chan = await mq.channel()
                 queue = await chan.declare_queue("acura", durable=True, auto_delete=False)
                 async with queue.iterator() as iterator:
                     async for msg in iterator:
                         async with msg.process(ignore_processed=True):
                             try:
-                                await consume(msg, pg)
+                                await consume(msg, pg, conf)
                                 await msg.ack()
                             except Exception as e:
                                 print("AMQP Error During Processing:", e)
@@ -38,7 +41,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    logfire.configure(
-        token='pylf_v1_us_s69BSXFDdxZSbCyNBSBgdWrPFYwFbtGL5zcp68y31mzz')
+    logfire.configure(token=conf.LOGFIRE_TOKEN)
     Agent.instrument_all()
     asyncio.run(main())
