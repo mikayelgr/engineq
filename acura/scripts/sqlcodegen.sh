@@ -7,4 +7,4 @@ if [ -f .env ]; then
 fi
 
 # Generate models.py using sqlacodegen
-sqlacodegen "$POSTGRES_URL" > models.py;
+sqlacodegen "$POSTGRES_URL" > ./internal/models.py;

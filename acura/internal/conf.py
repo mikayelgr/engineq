@@ -19,6 +19,7 @@ class Config:
     DISCOGS_USER_TOKEN: str
     PYTHON_ENV: str
     POSTGRES_URL: str
+    BRAVE_SEARCH_TOKEN: str
 
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
@@ -37,6 +38,7 @@ class Config:
             self.DISCOGS_USER_TOKEN = os.getenv("DISCOGS_USER_TOKEN")
             self.OLLAMA_URL = os.getenv("OLLAMA_URL")
             self.POSTGRES_URL = os.getenv("POSTGRES_URL")
+            self.BRAVE_SEARCH_TOKEN = os.getenv("BRAVE_SEARCH_TOKEN")
 
             self.initialized = True
 

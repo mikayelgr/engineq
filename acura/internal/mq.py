@@ -1,7 +1,7 @@
 import json
 import sqlalchemy as db
-from models import Subscribers
-import chain
+from internal.models import Subscribers
+import internal.chain as chain
 from sqlalchemy.ext.asyncio import AsyncConnection
 import aio_pika
 

@@ -4,7 +4,7 @@ from dotenv import load_dotenv, find_dotenv  # nopep8
 load_dotenv(find_dotenv())  # nopep8
 
 from sqlalchemy.ext.asyncio import create_async_engine
-from mq import consume
+from internal.mq import consume
 import aio_pika
 import asyncio
 
