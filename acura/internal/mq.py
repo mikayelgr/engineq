@@ -8,17 +8,19 @@ import aio_pika
 
 async def consume(msg: aio_pika.abc.AbstractIncomingMessage, pg: AsyncConnection):
     try:
-        b = json.loads(msg.body)
+        parsed_message = json.loads(msg.body)
     except:
         raise Exception("Invalid JSON body provided in AMQP message")
 
-    if ("license" not in b) or (b["license"] == "") or (b["license"] is None):
+    if ("license" not in parsed_message) or (parsed_message["license"] == "") or (parsed_message["license"] is None):
         raise Exception("License key was not provided")
 
-    r = await pg.execute(db.select(Subscribers).where(Subscribers.license == b["license"]))
+    r = await pg.execute(db.select(Subscribers).where(Subscribers.license == parsed_message["license"]))
     s = r.one()
     if s is None:
         raise Exception("No subscriber found with the given license")
 
-    if await chain.compose(s.id, b["prompt"], chain.WrappedSQLASession(session=pg)) is None:
-        raise Exception("Something wrong happened during generation...")
+    try:
+        await chain.compose(s.id, chain.WrappedSQLAClient(conn=pg))
+    except Exception as e:
+        raise Exception(f"Something wrong happened during generation: {e}")

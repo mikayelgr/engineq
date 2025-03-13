@@ -29,6 +29,7 @@ class Subscribers(Base):
     created_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True), server_default=text('now()'))
 
     playlists: Mapped[List['Playlists']] = relationship('Playlists', back_populates='subscribers')
+    prompts: Mapped[List['Prompts']] = relationship('Prompts', back_populates='subscribers')
     suggestions: Mapped[List['Suggestions']] = relationship('Suggestions', secondary='playback', back_populates='subscribers')
 
 
@@ -64,6 +65,21 @@ class Playlists(Base):
 
     subscribers: Mapped[Optional['Subscribers']] = relationship('Subscribers', back_populates='playlists')
     suggestions: Mapped[List['Suggestions']] = relationship('Suggestions', back_populates='playlists')
+
+
+class Prompts(Base):
+    __tablename__ = 'prompts'
+    __table_args__ = (
+        ForeignKeyConstraint(['sid'], ['subscribers.id'], name='prompts_sid_fkey'),
+        PrimaryKeyConstraint('id', name='prompts_pkey')
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    prompt: Mapped[str] = mapped_column(Text)
+    sid: Mapped[int] = mapped_column(Integer)
+    active_when: Mapped[Optional[str]] = mapped_column(Text)
+
+    subscribers: Mapped['Subscribers'] = relationship('Subscribers', back_populates='prompts')
 
 
 class Suggestions(Base):

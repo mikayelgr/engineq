@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from internal.mq import consume
 import aio_pika
 import asyncio
+from pydantic_ai import Agent
+import logfire
 
 
 async def main():
@@ -36,4 +38,7 @@ async def main():
 
 
 if __name__ == "__main__":
+    logfire.configure(
+        token='pylf_v1_us_s69BSXFDdxZSbCyNBSBgdWrPFYwFbtGL5zcp68y31mzz')
+    Agent.instrument_all()
     asyncio.run(main())
