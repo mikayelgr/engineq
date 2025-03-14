@@ -2,6 +2,7 @@ import { ScrollShadow } from "@heroui/react";
 import Navigation from "@/src/components/navigation";
 import { signout } from "@/src/actions/auth";
 import { DashboardStoreProvider } from "@/src/providers/dashboard/dashboard-store-provider";
+import DashboardPageLinks from "@/src/components/dashboard/page-links";
 
 export default async function Layout({
   children,
@@ -11,8 +12,14 @@ export default async function Layout({
   return (
     <div className="w-full shadow-none flex items-center justify-center flex-col h-screen">
       <DashboardStoreProvider>
-        <div className="w-full mt-8 px-4 flex items-center justify-center">
-          <Navigation actions={{ signout }} />
+        <div className="w-full flex flex-col gap-6">
+          <div className="w-full mt-8 px-4 flex items-center justify-center">
+            <Navigation actions={{ signout }} />
+          </div>
+
+          <div className="w-full flex items-center justify-center gap-4">
+            <DashboardPageLinks />
+          </div>
         </div>
 
         {/* Content area */}
