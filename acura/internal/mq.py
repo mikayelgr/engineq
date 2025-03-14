@@ -22,6 +22,6 @@ async def consume(msg: aio_pika.abc.AbstractIncomingMessage, pg: AsyncConnection
         raise Exception("No subscriber found with the given license")
 
     try:
-        await chain.compose(s.id, conf, pg)
+        await chain.compose(s.id, pg, conf)
     except Exception as e:
         raise Exception(f"Something wrong happened during generation: {e}")
