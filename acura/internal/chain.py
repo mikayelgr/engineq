@@ -1,3 +1,5 @@
+from pydantic_ai.models.openai import OpenAIModel
+import os
 from spotipy import SpotifyClientCredentials
 from pydantic_ai import Agent
 from pydantic.dataclasses import dataclass
@@ -29,12 +31,18 @@ class AgentOutput:
     finished: bool
 
 
+model = OpenAIModel(
+    "gpt-4o-mini" if not os.getenv(
+        "OLLAMA_MODEL_NAME") else os.getenv("OLLAMA_MODEL_NAME"),
+    base_url=(os.getenv("OLLAMA_API_URL")
+              if os.getenv("OLLAMA_API_URL") else None),
+)
+
 agent = Agent(
-    "gpt-4o-mini",
+    model,
     name="llm",
     retries=5,
-    system_prompt=f"""
-__PROMPT__
+    system_prompt=f"""__PROMPT__
 You are a helpful music research and playlist generation agent. Your task is to
 search for tracks on Spotify based on the given prompt. You should find tracks
 that match the prompt and store the processed tracks in the database. You may
@@ -42,11 +50,9 @@ use additional context to help you with the search. You must make sure that
 the results you provide are relevant to the prompt.
 
 __INSTRUCTIONS__
-1. Given user instructions, generate the best prompt for searching music of
+1. Given user instructions, generate the best query for searching music of
    the user's choice.
 2. Search for tracks on Spotify based on the prompt.
-3. Analyze the tracks for their relevance and whether they match user's request.
-4. Store the processed tracks in the database.
 
 __ADDITIONAL CONTEXT__
 - Today's date: **{datetime.today()}**.
@@ -57,11 +63,13 @@ __ADDITIONAL CONTEXT__
 
 
 @agent.tool(retries=3)
-async def search_spotify(ctx: RunContext[AgentDeps], query: str) -> AgentOutput:
+async def search_spotify(ctx: RunContext[AgentDeps], query: str, exclude_explicit_tracks=True) -> AgentOutput:
     spotify_tracks_response = ctx.deps.spotipy.search(
         query, limit=20, type="track")
     for t in spotify_tracks_response["tracks"]["items"]:
-        if t["is_playable"]:
+        is_playable = t["is_playable"]
+        is_explicit = t["explicit"]  # special field from Spotify API
+        if is_playable and (not exclude_explicit_tracks or not is_explicit):
             playlist = await __create_or_get_playlist(ctx.deps.pg, ctx.deps.sid)
             track = await __create_track_from_spotify(ctx.deps.pg, t)
             if track is not None:
@@ -85,7 +93,7 @@ async def compose(sid: int, pg: AsyncConnection, conf: internal.conf.Config):
                 "No prompt found for the subscriber. At least one needs to be configured.")
 
         async with AsyncClient() as http:
-            await agent.run(prompt, deps=AgentDeps(pg, sid, spotipy, http))
+            await agent.run(prompt, deps=AgentDeps(pg=pg, sid=sid, spotipy=spotipy, http=http, conf=conf))
     except Exception as e:
         raise Exception(f"Error during playlist generation: {e}")
 

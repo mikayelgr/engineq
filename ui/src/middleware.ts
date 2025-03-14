@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "./lib/sql";
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   // On-site request validation
@@ -31,6 +30,5 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  runtime: "nodejs",
   matcher: ["/dashboard/:path*", "/api/:path*"],
 };
