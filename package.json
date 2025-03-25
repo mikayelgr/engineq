@@ -2,8 +2,7 @@
   "name": "engineq",
   "private": true,
   "scripts": {
-    "dbmate": "dbmate -e POSTGRES_URL -d migrations",
-    "postdbmate": "cd acura && ./scripts/sqlcodegen.sh"
+    "dbmate": "dbmate -e POSTGRES_URL -d migrations"
   },
   "devDependencies": {
     "dbmate": "^2.26.0"

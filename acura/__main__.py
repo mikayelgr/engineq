@@ -32,12 +32,15 @@ async def main():
                             except Exception as e:
                                 print("AMQP Error During Processing:", e)
                                 await msg.reject(requeue=False)
-    except:
-        pass
+    except Exception as e:
+        print("Acura runtime error:", e)
     finally:
-        await mq.close()
-        await pg.close()
-        await sql_conn.dispose()  # Closing SQL connection gracefully
+        if mq is not None:
+            await mq.close()
+        if pg is not None:
+            await pg.close()
+        if sql_conn is not None:
+            await sql_conn.dispose()  # Closing SQL connection gracefully
 
 
 if __name__ == "__main__":
