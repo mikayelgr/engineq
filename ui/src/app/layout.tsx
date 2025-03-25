@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { Providers } from "../providers/root";
 import { siteConfig } from "@/src/config/site";
 import { fontSans } from "@/src/config/fonts";
+import NextTopLoader from "nextjs-toploader";
 
 export const metadata: Metadata = {
   title: {
@@ -37,6 +38,7 @@ export default async function RootLayout({
           fontSans.variable
         )}
       >
+        <NextTopLoader />
         <Providers themeProps={{ attribute: "class", defaultTheme: "dark" }}>
           <main className="h-screen w-full flex items-center justify-center">
             <div className="w-full sm:max-w-4xl md:max-w-5xl rounded-lg">
