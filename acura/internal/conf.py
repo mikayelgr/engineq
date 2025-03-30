@@ -10,32 +10,30 @@ class Config:
     Note: Dotenv initialization must happen in the main file before the Config
     class is used.
     """
-    # Not an env variable. Static configuration for RabbitMQ, which doesn't include any sensitive information.
-    DEBUG: bool
-    AMQP_URL: str
-    POSTGRES_URL: str
-    OPENAI_API_KEY: str
-    DISCOGS_USER_TOKEN: str
-    BRAVE_SEARCH_TOKEN: str
-    SPOTIFY_CLIENT_ID: str
-    SPOTIFY_CLIENT_SECRET: str
-    LOGFIRE_TOKEN: str
+    _instance = None
 
-    def __init__(self):
-        if not hasattr(self, 'initialized'):
-            self.DEBUG = False
-            self.AMQP_URL = os.getenv("AMQP_URL")
-            self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-            self.DISCOGS_USER_TOKEN = os.getenv("DISCOGS_USER_TOKEN")
-            self.POSTGRES_URL = os.getenv("POSTGRES_URL")
-            self.BRAVE_SEARCH_TOKEN = os.getenv("BRAVE_SEARCH_TOKEN")
-            self.SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
-            self.SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
-            self.LOGFIRE_TOKEN = os.getenv("LOGFIRE_TOKEN")
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(Config, cls).__new__(cls, *args, **kwargs)
+            cls._instance._initialize()
+        return cls._instance
 
-            if os.getenv("DEBUG"):
-                self.DEBUG = True
+    def _initialize(self):
+        self.DEBUG = False
+        self.AMQP_URL = os.getenv("AMQP_URL")
+        self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+        # self.DISCOGS_USER_TOKEN = os.getenv("DISCOGS_USER_TOKEN")
+        self.POSTGRES_URL = os.getenv("POSTGRES_URL")
+        self.BRAVE_SEARCH_TOKEN = os.getenv("BRAVE_SEARCH_TOKEN")
+        self.SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
+        self.SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+        self.LOGFIRE_TOKEN = os.getenv("LOGFIRE_TOKEN")
+        self.OLLAMA_MODEL_NAME = os.getenv("OLLAMA_MODEL_NAME")
+        self.OLLAMA_API_URL = os.getenv("OLLAMA_API_URL")
 
-            if self.DEBUG:
-                print(self.__dict__)
-                print("-" * 50)
+        if os.getenv("DEBUG"):
+            self.DEBUG = True
+
+        if self.DEBUG:
+            print(self.__dict__)
+            print("-" * 50)

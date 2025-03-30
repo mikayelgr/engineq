@@ -3,6 +3,7 @@
 from dotenv import load_dotenv, find_dotenv  # nopep8
 load_dotenv(find_dotenv())  # nopep8
 
+import logging
 from sqlalchemy.ext.asyncio import create_async_engine
 from internal.mq import consume
 import aio_pika
@@ -11,10 +12,17 @@ from pydantic_ai import Agent
 import logfire
 from internal.conf import Config
 
-conf = Config()
-
 
 async def main():
+    conf = Config()
+    logging.basicConfig(
+        level=logging.ERROR if conf.DEBUG else logging.INFO | logging.ERROR | logging.WARNING,
+        format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+    )
+    logfire.configure(token=conf.LOGFIRE_TOKEN)
+    Agent.instrument_all()  # used for pydanticai logging
+
+    logger = logging.getLogger(__name__)
     try:
         # Connecting to the database
         sql_conn = create_async_engine(
@@ -30,10 +38,11 @@ async def main():
                                 await consume(msg, pg, conf)
                                 await msg.ack()
                             except Exception as e:
-                                print("AMQP Error During Processing:", e)
+                                logger.error(
+                                    "AMQP Error During Processing:", e)
                                 await msg.reject(requeue=False)
     except Exception as e:
-        print("Acura runtime error:", e)
+        logger.error("Acura runtime error:", e)
     finally:
         if mq is not None:
             await mq.close()
@@ -44,6 +53,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    logfire.configure(token=conf.LOGFIRE_TOKEN)
-    Agent.instrument_all()
     asyncio.run(main())
