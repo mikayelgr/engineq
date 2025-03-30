@@ -56,7 +56,7 @@ async def __create_track_from_spotify_search(pg: AsyncConnection, t: dict) -> Tr
         r = await pg.execute(insert(Tracks).values(
             title=t["title"],
             artist=t["artist"],
-            duration=100,  # default for now
+            duration=t["duration"],  # default for now
             uri=t["uri"],
         ).returning(literal_column('*')))
         return r.one()
