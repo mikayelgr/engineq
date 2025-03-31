@@ -24,7 +24,7 @@ async def consume(msg: aio_pika.abc.AbstractIncomingMessage, pg: AsyncConnection
         raise Exception("No subscriber found with the given license")
 
     try:
-        tracks = await chain.curate_music(s.id, pg)
+        tracks = await chain.curate(s.id, pg)
     except Exception as e:
         raise Exception(f"Something wrong happened during generation: {e}")
 

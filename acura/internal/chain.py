@@ -1,21 +1,20 @@
 from spotipy import SpotifyClientCredentials
 from pydantic_ai import Agent
-from internal.models import Prompts, Tracks
-from sqlalchemy import insert, select, func, literal_column
+from internal.models import Prompts
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
-from pydantic_ai import RunContext, ModelRetry
 from pydantic import BaseModel, Field
 from spotipy import Spotify as Spotipy
-from datetime import datetime
-from internal.models import Playlists, Suggestions
-from httpx import AsyncClient
 from internal.conf import Config
 import logging
 import random
+from dataclasses import dataclass
 import string
 from internal.services.brave_search import BraveSearchService
 from internal.agents import decide_llm
 from internal.agents.yt_analyzer_agent import YoutubeAnalyzerAgent
+from pydantic_graph import BaseNode, GraphRunContext, End, Graph
+from pydantic_ai import ModelRetry
 
 logger = logging.getLogger(__name__)
 spotipy = Spotipy(
@@ -26,116 +25,141 @@ spotipy = Spotipy(
 )
 
 
-class AgentDeps(BaseModel):
+@dataclass
+class GraphDeps:
     sid: int
     pg: AsyncConnection
-
-    spotify_search_tracks: list
 
     class Config:
         arbitrary_types_allowed = True
 
 
-class AgentOutput(BaseModel):
-    """The final output returned by the agent."""
+@dataclass
+class VerifyYoutubeNode(BaseNode[None, GraphDeps]):
+    """
+    This node makes sure that the tracks from Spotify actually exist on YouTube by searching
+    for them using Brave's search API. Tracks must be received from `search_spotify` tool in
+    the workflow.
+    """
+    tracks: list[dict]
 
-    done: bool = Field(
-        default=True,
-        description="Whether the agent has finished the workflow."
+    async def run(self, _: GraphRunContext[None, GraphDeps]) -> End[list[dict]]:
+        verified = []
+        for t in self.tracks:
+            query = f"{t['name']} {t['artists'][0]['name']}"
+            results = await BraveSearchService.search_youtube(query, 2)
+            if results is None or len(results) == 0:
+                continue
+
+            # Trigger the YoutubeAnalyzerAgent to check if the video is a music video
+            # or contains music solely based on the title.
+            if await YoutubeAnalyzerAgent().check_is_music_video(results[0]["title"]):
+                verified.append({
+                    "title": t["name"],
+                    "uri": results[0]["url"],
+                    "artist": t["artists"][0]["name"],
+                    "duration": t["duration_ms"] / 1000,
+                    # "explicit": t["explicit"],
+                    # "image": results[0]["thumbnail"]["src"],
+                })
+
+        if len(verified) == 0:
+            raise ModelRetry(
+                "No tracks were found. Try to improve/update the search query and try again.")
+
+        return End(verified)
+
+
+@dataclass
+class SearchSpotifyNode(BaseNode[None, GraphDeps]):
+    @dataclass
+    class AgentOutput(BaseModel):
+        query: str | None = Field(
+            default=None,
+            description="The search query to find tracks on Spotify.")
+        exclude_explicit_tracks: bool = Field(
+            default=True,
+            description="Whether to exclude explicit tracks from the search results."
+        )
+
+    prompt: str  # The prompt of the business owner.
+
+    query_gen_agent = Agent(
+        model=decide_llm(),
+        retries=5,
+        result_retries=3,
+        result_type=AgentOutput,
+        model_settings={"temperature": 0.7},
+        # The system prompts follow CodeSignal's MPF format for GenAI prompts.
+        # Learn more here: https://codesignal.com/learn/paths/prompt-engineering-for-everyone?courseSlug=understanding-llms-and-basic-prompting-techniques&unitSlug=mastering-consistent-formatting-and-organization-for-effective-prompting
+        system_prompt="""
+__ASK__
+You are a Music Search Query Generation AI designed to assist business owners. Your task is to generate concise, unique music search queries based on the user's prompt, which describes their business context and musical preferences.
+
+__CONTEXT__
+- The user is a business owner seeking music for specific purposes such as:
+  - Background ambiance for their establishment.
+  - Music for corporate events.
+  - Soundtracks for marketing campaigns.
+- The user's prompt may include details like:
+  - Business type (e.g., café, retail store, office).
+  - Desired atmosphere or mood (e.g., relaxing, energetic).
+  - Preferred genres, artists, eras, or tempos.
+
+__CONSTRAINTS__
+- Infer all relevant musical attributes from the user's prompt, including:
+  - Genre
+  - Mood
+  - Tempo
+  - Artist references
+  - Era
+  - Cultural influences
+- Generate 1 search query that:
+  - Are each under 100 words.
+  - Are free from redundancy and repetition.
+  - Target unique musical aspects to ensure diverse search results and minimize duplication issues in the database.
+- Maintain a professional tone aligned with business needs.
+- Avoid extraneous or unrelated details.
+
+__EXAMPLE__
+*User Prompt:* "I own a modern coffee shop and want upbeat acoustic music to create a lively yet cozy atmosphere."
+
+*Generated Search Queries:*
+1. "Upbeat acoustic tracks for coffee shop ambiance"
+2. "Lively acoustic café background music"
+3. "Energetic unplugged songs for modern coffeehouse"
+"""
     )
 
-    tracks: list
+    async def run(self, ctx: GraphRunContext[None, GraphDeps]) -> VerifyYoutubeNode:
+        flow = await self.query_gen_agent.run(self.prompt)
+        # random character for truly random search query. for more information check the following
+        # stackoverflow thread: https://stackoverflow.com/questions/68006378/spotify-api-randomness-in-search
+        seed = random.choice(string.ascii_letters)
+        query = flow.data.query + ' ' + seed
+
+        # search only for tracks for tracks on Spotify. uniqueness is almost guaranteed at this point
+        spotify_search_response = spotipy.search(query, type="track")
+        if ("tracks" not in spotify_search_response) or (len(spotify_search_response["tracks"]["items"]) == 0):
+            return "No tracks were found. Try to improve/update the search query and try again."
+        tracks = spotify_search_response["tracks"]["items"]
+        if flow.data.exclude_explicit_tracks:
+            tracks = [t for t in tracks if not t["explicit"]]
+
+        return VerifyYoutubeNode(tracks)
 
 
-model = decide_llm()
-agent = Agent(
-    model,
-    name="llm",
-    retries=5,
-    system_prompt=f"""__PROMPT__
-You are a helpful music research and playlist generation agent. Your task is to
-search for tracks on Spotify based on the given prompt. You should find tracks
-that match the prompt and store the processed tracks in the database. You may
-use additional context to help you with the search. You must make sure that
-the results you provide are relevant to the prompt.
+@dataclass
+class MusicCurationGraph:
+    graph = Graph(nodes=(SearchSpotifyNode, VerifyYoutubeNode),
+                  run_end_type=list[dict])
 
-__INSTRUCTIONS__
-1. Generate a good search query, preferably with some artist names included
-2. Search for tracks on Spotify using `search_spotify` tool.
-3. Pass the found tracks to `search_and_get_tracks_from_youtube` tool for enhanced search.
-4. Complete
-
-__ADDITIONAL CONTEXT__
-- Today's date: **{datetime.today()}**.
-""",
-    deps_type=AgentDeps,
-    result_retries=3,
-    model_settings={
-        "temperature": 0.8,
-    },
-    result_type=AgentOutput)
+    async def run(self, prompt: str, deps: GraphDeps):
+        flow = await self.graph.run(SearchSpotifyNode(prompt), deps=deps)
+        return flow
 
 
-@agent.tool(retries=3)
-async def search_spotify(ctx: RunContext[AgentDeps], query: str, exclude_explicit_tracks=True):
-    """
-    Search for tracks on Spotify based on the given query. You must ensure to fully pass
-    the returned tracks to the next step in the workflow. Partial data is not accepted.
-
-    Args:
-        query: The search query to find tracks on Spotify.
-        exclude_explicit_tracks: Whether to exclude explicit tracks from the search results.
-    """
-
-    # random character for truly random search query. for more information check the following
-    # stackoverflow thread: https://stackoverflow.com/questions/68006378/spotify-api-randomness-in-search
-    seed = random.choice(string.ascii_letters)
-    query = query + ' ' + seed
-
-    # search only for tracks for tracks on Spotify. uniqueness is almost guaranteed at this point
-    spotify_search_response = spotipy.search(query, type="track")
-    if ("tracks" not in spotify_search_response) or (len(spotify_search_response["tracks"]["items"]) == 0):
-        return "No tracks were found. Try to improve/update the search query and try again."
-    tracks = spotify_search_response["tracks"]["items"]
-    if exclude_explicit_tracks:
-        tracks = [t for t in tracks if not t["explicit"]]
-    ctx.deps.spotify_search_tracks.extend(tracks)
-    return "Spotify search completed successfully."
-
-
-@agent.tool(retries=3)
-async def search_tracks_from_youtube(ctx: RunContext[AgentDeps]) -> AgentOutput:
-    """
-    Make sure that the tracks from Spotify actually exist on YouTube by searching for them
-    using Brave's search API. Tracks must be received from `search_spotify` tool in the
-    workflow.
-    """
-    verified = []
-
-    for t in ctx.deps.spotify_search_tracks:
-        query = f"{t['name']} {t['artists'][0]['name']}"
-        results = await BraveSearchService.search_youtube(query, 2)
-        if results is None or len(results) == 0:
-            continue
-
-        # Trigger the YoutubeAnalyzerAgent to check if the video is a music video
-        # or contains music solely based on the title.
-        if await YoutubeAnalyzerAgent().check_is_music_video(results[0]["title"]):
-            verified.append({
-                "title": t["name"],
-                "uri": results[0]["url"],
-                "artist": t["artists"][0]["name"],
-                "duration": t["duration_ms"] / 1000,
-                # "explicit": t["explicit"],
-                # "image": results[0]["thumbnail"]["src"],
-            })
-
-    if len(verified) == 0:
-        return "No tracks were found. Try to improve/update the search query and try again."
-    return AgentOutput(done=True, tracks=verified)
-
-
-async def curate_music(sid: int, pg: AsyncConnection) -> AgentOutput:
+async def curate(sid: int, pg: AsyncConnection) -> list[dict] | None:
     """
     Compose a playlist for the given subscriber ID.
     Args:
@@ -150,8 +174,8 @@ async def curate_music(sid: int, pg: AsyncConnection) -> AgentOutput:
             raise Exception(
                 "No prompt found for the subscriber. At least one needs to be configured.")
 
-        flow = await agent.run(prompt, deps=AgentDeps(pg=pg, sid=sid, spotify_search_tracks=[]))
-        return flow.data.tracks
+        flow = await MusicCurationGraph().run(prompt, deps=GraphDeps(sid=sid, pg=pg))
+        return flow.output
     except Exception as e:
         raise Exception(f"Error during playlist generation: {e}")
 
