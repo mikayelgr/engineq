@@ -131,7 +131,7 @@ __EXAMPLE__
 """
     )
 
-    async def run(self, ctx: GraphRunContext[None, GraphDeps]) -> VerifyYoutubeNode:
+    async def run(self, _: GraphRunContext[None, GraphDeps]) -> VerifyYoutubeNode:
         flow = await self.query_gen_agent.run(self.prompt)
         # random character for truly random search query. for more information check the following
         # stackoverflow thread: https://stackoverflow.com/questions/68006378/spotify-api-randomness-in-search
@@ -152,10 +152,13 @@ __EXAMPLE__
 @dataclass
 class MusicCurationGraph:
     graph = Graph(nodes=(SearchSpotifyNode, VerifyYoutubeNode),
-                  run_end_type=list[dict])
+                  run_end_type=list[dict],
+                  name="Music Curation Graph")
 
     async def run(self, prompt: str, deps: GraphDeps):
         flow = await self.graph.run(SearchSpotifyNode(prompt), deps=deps)
+        if flow.output is None:
+            raise ValueError("Graph execution did not produce any output.")
         return flow
 
 

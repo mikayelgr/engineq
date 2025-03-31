@@ -11,6 +11,23 @@ import asyncio
 from pydantic_ai import Agent
 import logfire
 from internal.conf import Config
+import os
+
+
+async def process_message(msg, pg, conf, logger):
+    """
+    Process a single RabbitMQ message.
+    """
+    try:
+        async with msg.process(ignore_processed=True):
+            await consume(msg, pg, conf)
+            await msg.ack()
+    except Exception as e:
+        logger.error("AMQP Error During Processing: %s", e)
+        try:
+            await msg.reject(requeue=False)
+        except aio_pika.exceptions.MessageProcessError as mpe:
+            logger.error("Message already processed: %s", mpe)
 
 
 async def main():
@@ -23,6 +40,13 @@ async def main():
     Agent.instrument_all()  # used for pydanticai logging
 
     logger = logging.getLogger(__name__)
+    # Limit concurrency to 10 tasks
+    semaphore = asyncio.Semaphore(os.cpu_count())
+
+    async def limited_process_message(msg, pg, conf, logger):
+        async with semaphore:
+            await process_message(msg, pg, conf, logger)
+
     try:
         # Connecting to the database
         sql_conn = create_async_engine(
@@ -32,22 +56,21 @@ async def main():
                 chan = await mq.channel()
                 queue = await chan.declare_queue("acura", durable=True, auto_delete=False)
                 async with queue.iterator() as iterator:
+                    tasks = set()
                     async for msg in iterator:
-                        async with msg.process(ignore_processed=True):
-                            try:
-                                await consume(msg, pg, conf)
-                                await msg.ack()
-                            except Exception as e:
-                                logger.error(
-                                    "AMQP Error During Processing:", e)
-                                await msg.reject(requeue=False)
+                        # Create a task for each message
+                        task = asyncio.create_task(
+                            limited_process_message(msg, pg, conf, logger))
+                        tasks.add(task)
+
+                        # Remove completed tasks from the set
+                        task.add_done_callback(tasks.discard)
+
     except Exception as e:
-        logger.error("Acura runtime error:", e)
+        logger.error("Acura runtime error: %s", e)
     finally:
         if mq is not None:
             await mq.close()
-        if pg is not None:
-            await pg.close()
         if sql_conn is not None:
             await sql_conn.dispose()  # Closing SQL connection gracefully
 
