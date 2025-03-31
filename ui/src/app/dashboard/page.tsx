@@ -6,7 +6,7 @@ import StatsGroup from "@/src/components/dashboard/stats-group";
 export default function DashboardContent() {
   return (
     <div className="w-full h-full gap-8 flex flex-col items-center">
-      <StatsGroup />
+      {/* <StatsGroup /> */}
 
       <div className="w-full flex flex-row gap-3">
         <CurrentPlaybackInfo />
