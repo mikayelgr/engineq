@@ -4,12 +4,13 @@ from internal.conf import Config
 
 
 @dataclass
-class BraveSearchService:
+class BraveSearchService():
     client = httpx.AsyncClient(
         base_url="https://api.search.brave.com",
         follow_redirects=True,
         headers={"Accept": "application/json"})
 
+    @classmethod
     async def search_youtube(self, query: str, num_results: int = 2):
         query = "site:youtube.com" + ' ' + query
         search_response = await self.client.get("/res/v1/web/search", params={
