@@ -10,7 +10,7 @@ export default function OnboardingForm() {
       <div className="flex flex-col w-full gap-2">
         <h1 className={title({ size: "sm" })}>EngineQ</h1>
         <p className={"text-gray-400 text-sm"}>
-          Intelligence-enabled music management system for your business.
+          Intelligence-enabled music management system for businesses.
         </p>
       </div>
 
