@@ -34,7 +34,7 @@ async def process_message(msg, pg, conf, logger):
 async def main():
     conf = Config()
     logging.basicConfig(
-        level=logging.ERROR if conf.DEBUG else logging.INFO | logging.ERROR | logging.WARNING,
+        level=logging.ERROR if conf.DEBUG else logging.ERROR,
         format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
     )
     logfire.configure(token=conf.LOGFIRE_TOKEN)
