@@ -202,7 +202,7 @@ class VerifyYoutubeNode(BaseNode[GraphState, GraphDeps]):
                 # This way, we don't need to trigger another LLM agent to check if the
                 # video is a music video. We can assume that if the title is similar to
                 # the track name, it is likely a music video.
-                if youtube_result and similarity > 0.75:
+                if youtube_result and similarity > 0.68:
                     verified_tracks.append({
                         "title": spotify_track["name"],
                         "uri": youtube_result["url"],
