@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from internal.services.spotify import SpotifyService
 from internal.services.brave_search import BraveSearchService
 from internal.agents import decide_llm
-from internal.agents.yt_analyzer_agent import YoutubeAnalyzerAgent
 from pydantic_graph import BaseNode, GraphRunContext, End, Graph
 import Levenshtein
 
@@ -203,7 +202,7 @@ class VerifyYoutubeNode(BaseNode[GraphState, GraphDeps]):
                 # This way, we don't need to trigger another LLM agent to check if the
                 # video is a music video. We can assume that if the title is similar to
                 # the track name, it is likely a music video.
-                if youtube_result and similarity > 0.65:
+                if youtube_result and similarity > 0.75:
                     verified_tracks.append({
                         "title": spotify_track["name"],
                         "uri": youtube_result["url"],
