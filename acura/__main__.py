@@ -12,6 +12,7 @@ from pydantic_ai import Agent
 import logfire
 from internal.conf import Config
 import os
+import sqlalchemy.exc
 
 
 async def process_message(msg, pg, conf, logger):
@@ -47,32 +48,39 @@ async def main():
         async with semaphore:
             await process_message(msg, pg, conf, logger)
 
+    # Connecting to PostgreSQL
+    postgres_engine = create_async_engine(
+        conf.POSTGRES_URL, echo=conf.DEBUG, isolation_level="AUTOCOMMIT")
+
     try:
-        # Connecting to the database
-        sql_conn = create_async_engine(
-            conf.POSTGRES_URL, echo=conf.DEBUG, isolation_level="AUTOCOMMIT")
-        async with sql_conn.begin() as pg:
-            async with await aio_pika.connect_robust(conf.AMQP_URL) as mq:
-                chan = await mq.channel()
-                queue = await chan.declare_queue("acura", durable=True, auto_delete=False)
-                async with queue.iterator() as iterator:
-                    tasks = set()
-                    async for msg in iterator:
-                        # Create a task for each message
-                        task = asyncio.create_task(
-                            limited_process_message(msg, pg, conf, logger))
-                        tasks.add(task)
+        pg = await postgres_engine.connect().start()
+        mq = await aio_pika.connect_robust(conf.AMQP_URL)
 
-                        # Remove completed tasks from the set
-                        task.add_done_callback(tasks.discard)
+        chan = await mq.channel()
+        queue = await chan.declare_queue("acura", durable=True, auto_delete=False)
 
-    except Exception as e:
-        logger.error("Acura runtime error: %s", e)
+        async with queue.iterator() as iterator:
+            tasks = set()
+            async for msg in iterator:
+                # Create a task for each message
+                task = asyncio.create_task(
+                    limited_process_message(msg, pg, conf, logger))
+                tasks.add(task)
+
+                # Remove completed tasks from the set
+                task.add_done_callback(tasks.discard)
+
+    except aio_pika.exceptions.AMQPConnectionError as e:
+        logger.error("AMQP Connection Error: %s", e)
+    except sqlalchemy.exc.SQLAlchemyError as e:
+        logger.error("PSQL Runtime Error: %s", e)
+    except (KeyboardInterrupt, asyncio.CancelledError, SystemExit):
+        print("Shutting down acura...")
+        await iterator.close()  # Stopping the consumption of the iterator
     finally:
-        if mq is not None:
-            await mq.close()
-        if sql_conn is not None:
-            await sql_conn.dispose()  # Closing SQL connection gracefully
+        await pg.close()
+        await postgres_engine.dispose()
+        await mq.close()
 
 
 if __name__ == "__main__":
