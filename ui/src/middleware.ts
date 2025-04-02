@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
-  // On-site request validation
-  if (request.nextUrl.pathname.startsWith("/api")) {
-    const hostHeader = request.headers.get("host");
-    const expectedHost = new URL(request.url).host;
-
-    if (!hostHeader || hostHeader !== expectedHost) {
-      return NextResponse.json(
-        { error: "Forbidden: External requests blocked" },
-        { status: 403 }
-      );
-    }
-  }
-
   // Authentication
   const c = request.cookies.get("lck");
   if (!c || c.value.length === 0) {
