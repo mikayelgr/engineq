@@ -8,6 +8,9 @@
     },
     {
       "path": "migrations"
+    },
+    {
+      "path": "migrator"
     }
   ],
   "settings": {}
