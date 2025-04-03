@@ -12,14 +12,16 @@ from pydantic_ai import Agent
 import logfire
 from internal.conf import Config
 import internal.mq
+from pythonjsonlogger.json import JsonFormatter
 
 
 async def main() -> int:
     conf = Config()
-    logging.basicConfig(
-        level=logging.ERROR if conf.DEBUG else logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
-    )
+    logging.basicConfig(level=logging.ERROR if conf.DEBUG else logging.INFO)
+
+    formatter = JsonFormatter(
+        "{levelname}{name}{filename}:{lineno}{asctime}{message}", style="{")
+    logging.getLogger().handlers[0].setFormatter(formatter)
 
     stop_event = asyncio.Event()
 
