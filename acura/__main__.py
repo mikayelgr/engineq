@@ -5,83 +5,84 @@ load_dotenv(find_dotenv())  # nopep8
 
 import logging
 from sqlalchemy.ext.asyncio import create_async_engine
-from internal.mq import consume
 import aio_pika
 import asyncio
+import signal
 from pydantic_ai import Agent
 import logfire
 from internal.conf import Config
-import os
-import sqlalchemy.exc
+import internal.mq
 
 
-async def process_message(msg, pg, conf, logger):
-    """
-    Process a single RabbitMQ message.
-    """
-    try:
-        async with msg.process(ignore_processed=True):
-            await consume(msg, pg, conf)
-            await msg.ack()
-    except Exception as e:
-        logger.error("AMQP Error During Processing: %s", e)
-        try:
-            await msg.reject(requeue=False)
-        except aio_pika.exceptions.MessageProcessError as mpe:
-            logger.error("Message already processed: %s", mpe)
-
-
-async def main():
+async def main() -> int:
     conf = Config()
     logging.basicConfig(
-        level=logging.ERROR if conf.DEBUG else logging.ERROR,
+        level=logging.ERROR if conf.DEBUG else logging.INFO,
         format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
     )
-    logfire.configure(token=conf.LOGFIRE_TOKEN)
-    Agent.instrument_all()  # used for pydanticai logging
 
-    logger = logging.getLogger(__name__)
-    # Limit concurrency to 10 tasks
-    semaphore = asyncio.Semaphore(os.cpu_count())
+    stop_event = asyncio.Event()
 
-    async def limited_process_message(msg, pg, conf, logger):
-        async with semaphore:
-            await process_message(msg, pg, conf, logger)
+    def handle_shutdown_signal():
+        logging.getLogger(__name__).info("Shutdown signal received...")
+        stop_event.set()
 
-    # Connecting to PostgreSQL
-    postgres_engine = create_async_engine(
-        conf.POSTGRES_URL, echo=conf.DEBUG, isolation_level="AUTOCOMMIT")
+    # Register signal handlers for graceful shutdown
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, handle_shutdown_signal)
 
     try:
-        pg = await postgres_engine.connect().start()
+        # Connecting to PostgreSQL
+        pgengine = create_async_engine(
+            conf.POSTGRES_URL, echo=conf.DEBUG, isolation_level="AUTOCOMMIT")
+        pg = await pgengine.connect().start()
+        logging.getLogger(__name__).info("Connected to PostgreSQL...")
+    except Exception as e:
+        logging.getLogger(__name__).error("PostgreSQL Connection Error: %s", e)
+        return -1
+
+    try:
         mq = await aio_pika.connect_robust(conf.AMQP_URL)
-
-        chan = await mq.channel()
-        queue = await chan.declare_queue("acura", durable=True, auto_delete=False)
-
-        async with queue.iterator() as iterator:
-            tasks = set()
-            async for msg in iterator:
-                # Create a task for each message
-                task = asyncio.create_task(
-                    limited_process_message(msg, pg, conf, logger))
-                tasks.add(task)
-
-                # Remove completed tasks from the set
-                task.add_done_callback(tasks.discard)
-
-    except aio_pika.exceptions.AMQPConnectionError as e:
-        logger.error("AMQP Connection Error: %s", e)
-    except sqlalchemy.exc.SQLAlchemyError as e:
-        logger.error("PSQL Runtime Error: %s", e)
-    except (KeyboardInterrupt, asyncio.CancelledError, SystemExit):
-        print("Shutting down acura...")
-        await iterator.close()  # Stopping the consumption of the iterator
-    finally:
+        logging.getLogger(__name__).info("Connected to RabbitMQ...")
+    except Exception as e:
+        logging.getLogger(__name__).error("AMQP Connection Error: %s", e)
         await pg.close()
-        await postgres_engine.dispose()
+        await pgengine.dispose()
+        return -1
+
+    try:
+        logging.info("Acura is starting...")
+        logging.info("Logfire is initializing...")
+        logfire.configure(token=conf.LOGFIRE_TOKEN, service_name="acura")
+        Agent.instrument_all()  # used for pydanticai logging
+
+        # Start consuming messages and wait for the stop event
+        consume_tasks = asyncio.create_task(
+            internal.mq.start_consuming(mq, pg))
+        await stop_event.wait()
+        consume_tasks.cancel()
+        try:
+            await consume_tasks
+        except asyncio.CancelledError:
+            logging.getLogger(__name__).info("Stopping message consumption...")
+    except Exception as e:
+        logging.getLogger(__name__).error("Unhandled error: %s", e)
+    finally:
+        logging.getLogger(__name__).info("Acura is shutting down...")
+        # Stopping the consumption of the iterator is required for graceful
+        # shutdown of the event loop.
+
+        # Gracefully close the PostgreSQL connection
         await mq.close()
+
+        # Gracefully close the PostgreSQL connection
+        await pg.close()
+        await pgengine.dispose()
+
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    code = asyncio.run(main())
+    exit(code)
