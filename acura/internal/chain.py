@@ -33,12 +33,12 @@ class GenerateSearchQueryNode(BaseNode[GraphState, GraphDeps]):
     """
     Generates a concise search query based on the user's prompt.
     """
-    logger = logging.getLogger(__name__)
     query_gen_agent = Agent(
         model=decide_llm(),
         retries=5,
         result_retries=3,
         result_type=str,
+        name="GenerateSearchQueryAgent",
         model_settings={"temperature": 0.7},
         # The system prompts follow CodeSignal's MPF format for GenAI prompts.
         # Learn more here: https://codesignal.com/learn/paths/prompt-engineering-for-everyone?courseSlug=understanding-llms-and-basic-prompting-techniques&unitSlug=mastering-consistent-formatting-and-organization-for-effective-prompting
@@ -69,7 +69,8 @@ __CONSTRAINTS__
             flow = await self.query_gen_agent.run(ambiance_prompt.prompt)
             return RetrieveSpotifyPlaylistsNode(query=flow.data)
         except Exception as e:
-            self.logger.error(f"Error during query generation: {e}")
+            logging.getLogger(__name__).error(
+                f"Error during query generation: {e}")
             raise
 
 
