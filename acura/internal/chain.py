@@ -1,7 +1,4 @@
 from pydantic_ai import Agent
-from internal.models import Prompts
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncConnection
 import logging
 from dataclasses import dataclass
 from internal.services.spotify import SpotifyService
@@ -9,6 +6,8 @@ from internal.services.brave_search import BraveSearchService
 from internal.agents import decide_llm
 from pydantic_graph import BaseNode, GraphRunContext, End, Graph
 import Levenshtein
+from internal.models.dao import PromptsDAO, PlaylistsDAO, TracksDAO
+from typing import Union
 
 # Maximum number of retries for executing the workflow
 MAX_RETRIES = 3
@@ -23,10 +22,6 @@ class GraphState:
 @dataclass
 class GraphDeps:
     sid: int
-    pg: AsyncConnection
-
-    class Config:
-        arbitrary_types_allowed = True
 
 
 @dataclass
@@ -64,22 +59,22 @@ __CONSTRAINTS__
 """
     )
 
-    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> 'SearchSpotifyPlaylistsNode':
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> Union["SearchSpotifyPlaylistsNode", End]:
         if ctx.state.error_info:
             logging.getLogger(__name__).error(
                 f"Error in previous step: {ctx.state.error_info}")
         if ctx.state.retry_count >= MAX_RETRIES:
-            return End(None)
+            return End()
 
         try:
-            ambiance_prompt = (await ctx.deps.pg.execute(select(Prompts).where(Prompts.sid == ctx.deps.sid))).one()
-            flow = await self.query_gen_agent.run(ambiance_prompt.prompt)
-            query = flow.data
-            return SearchSpotifyPlaylistsNode(query)
+            prompts = await PromptsDAO.get_subscriber_prompts_by_sid(ctx.deps.sid)
+            prompt = prompts[0].prompt
+            flow = await self.query_gen_agent.run(prompt)
+            return SearchSpotifyPlaylistsNode(flow.data)
         except Exception as e:
             logging.getLogger(__name__).error(
                 f"Error during query generation: {e}")
-            raise
+            return End()
 
 
 @dataclass
@@ -89,7 +84,7 @@ class SearchSpotifyPlaylistsNode(BaseNode[GraphState, GraphDeps]):
     """
     query: str | None
 
-    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> 'MatchQueryWithSpotifyPlaylist':
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> "MatchQueryWithSpotifyPlaylist":
         try:
             playlists, _ = await SpotifyService.search_playlists(query=self.query)
             if not playlists:
@@ -104,7 +99,7 @@ class SearchSpotifyPlaylistsNode(BaseNode[GraphState, GraphDeps]):
         except Exception as e:
             logging.getLogger(__name__).error(
                 f"Error retrieving Spotify playlists: {e}")
-            return End(None)
+            return End()
 
 
 @dataclass
@@ -134,7 +129,7 @@ as the title and the description of the playlist.
 """
     )
 
-    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> 'SearchYoutubeNode' | End[None]:
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> Union["SearchYoutubeNode", "GenerateSearchQueryNode"]:
         matched_playlist = None
 
         for playlist in self.found_playlists:
@@ -161,7 +156,7 @@ This is their query: {self.query}
 
         if matched_playlist:
             pid = matched_playlist["id"]
-            tracks = await SpotifyService.get_playlist_tracks(pid)
+            tracks = await SpotifyService.get_playlist_tracks(pid, 10)
             return SearchYoutubeNode(tracks=filter(lambda track: not track["explicit"], tracks))
         else:
             ctx.state.retry_count += 1
@@ -176,24 +171,7 @@ class SearchYoutubeNode(BaseNode[GraphState, GraphDeps]):
     """
     tracks: list[dict]
 
-    @classmethod
-    def parse_time_to_milliseconds(self, time_str):
-        parts = list(map(int, time_str.split(":")))
-        if len(parts) == 3:
-            hours, minutes, seconds = parts
-        elif len(parts) == 2:
-            hours = 0
-            minutes, seconds = parts
-        elif len(parts) == 1:
-            hours = minutes = 0
-            seconds = parts[0]
-        else:
-            raise ValueError("Invalid time format")
-
-        total_milliseconds = ((hours * 3600) + (minutes * 60) + seconds) * 1000
-        return total_milliseconds
-
-    async def run(self, _: GraphRunContext[GraphState, GraphDeps]) -> 'VerifyYoutubeResultsAgainstSpotifyNode':
+    async def run(self, _: GraphRunContext[GraphState, GraphDeps]) -> 'VerifyAndSaveSuggestionsNode':
         tracks = []
         for track in self.tracks:
             query = f"{track['name']} {track['artists'][0]['name']}"
@@ -236,21 +214,23 @@ class SearchYoutubeNode(BaseNode[GraphState, GraphDeps]):
                 # It is more beneficial to end early at this stage, because Brave's API
                 # is much more expensive, so it would not make sense to continue searching
                 # in case an error occurs and waste credits for other APIs.
-                return End(None)
+                return End()
 
-        return VerifyYoutubeResultsAgainstSpotifyNode(tracks)
+        return VerifyAndSaveSuggestionsNode(tracks)
 
 
 @dataclass
-class VerifyYoutubeResultsAgainstSpotifyNode(BaseNode[GraphState, GraphDeps]):
+class VerifyAndSaveSuggestionsNode(BaseNode[GraphState, GraphDeps]):
     """
     Verifies YouTube results to ensure they are music videos.
     """
     tracks: list[dict]
 
-    async def run(self, _: GraphRunContext[GraphState, GraphDeps]) -> End[list[dict]]:
-        verified_tracks = []
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> End:
+        playlist = await PlaylistsDAO.create_or_get_playlist(ctx.deps.sid)
+
         for i in range(len(self.tracks)):
+            verified_track = None
             spotify_track = self.tracks[i]["spotify_track"]
             youtube_results = self.tracks[i]["search_results"]
             for youtube_result in youtube_results:
@@ -267,18 +247,21 @@ class VerifyYoutubeResultsAgainstSpotifyNode(BaseNode[GraphState, GraphDeps]):
                 # video is a music video. We can assume that if the title is similar to
                 # the track name, it is likely a music video.
                 if youtube_result and similarity > 0.68:
-                    verified_tracks.append({
+                    verified_track = {
                         "title": spotify_track["name"],
                         "uri": youtube_result["url"],
                         "artist": spotify_track["artists"][0]["name"],
-                        "duration": 0,  # TODO: This needs to be fixed in the future
+                        "duration": spotify_track["duration_ms"],
                         "explicit": spotify_track["explicit"],
                         "image": spotify_track.get("album", {}).get("images", [{}])[0].get("url", None),
-                    })
+                    }
 
                     break
 
-        return End(verified_tracks)
+            if verified_track:
+                await PlaylistsDAO.add_track_to_playlist(playlist.id, verified_track)
+
+        return End(None)
 
 
 @dataclass
@@ -288,31 +271,25 @@ class MusicDiscoveryPipeline:
     """
     graph = Graph(
         nodes=(GenerateSearchQueryNode, SearchSpotifyPlaylistsNode,
-               MatchQueryWithSpotifyPlaylist, SearchYoutubeNode, VerifyYoutubeResultsAgainstSpotifyNode),
-        run_end_type=list[dict],
-        name="Music Discovery Pipeline"
+               MatchQueryWithSpotifyPlaylist, SearchYoutubeNode, VerifyAndSaveSuggestionsNode),
+        name="Music Discovery Pipeline",
+        run_end_type=None
     )
 
     async def run(self, deps: GraphDeps):
-        flow = await self.graph.run(
+        await self.graph.run(
             GenerateSearchQueryNode(),
-            state=GraphState(retry_count=0), deps=deps)
-        if flow.output is None:
-            raise ValueError("Graph execution did not produce any output.")
-        return flow
+            state=GraphState(retry_count=0),
+            deps=deps,
+        )
 
 
-async def curate(sid: int, pg: AsyncConnection) -> list[dict] | None:
+async def curate(sid: int):
     """
-    Compose a playlist for the given subscriber ID.
-    Args:
-        sid: The subscriber ID.
-        pg: The database connection.
-        conf: The configuration object.
+    Curates a playlist for a given subscriber ID.
     """
 
     try:
-        flow = await MusicDiscoveryPipeline().run(deps=GraphDeps(sid=sid, pg=pg))
-        return flow.output
+        await MusicDiscoveryPipeline().run(deps=GraphDeps(sid))
     except Exception as e:
         raise Exception(f"Error during playlist generation: {e}")

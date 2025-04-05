@@ -13,6 +13,9 @@ class Config:
     _instance = None
 
     def __new__(cls, *args, **kwargs):
+        from dotenv import load_dotenv, find_dotenv
+        load_dotenv(find_dotenv())
+
         if cls._instance is None:
             cls._instance = super(Config, cls).__new__(cls, *args, **kwargs)
             cls._instance._initialize()

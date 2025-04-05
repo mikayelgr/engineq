@@ -1,0 +1,9 @@
+[flake8]
+ignore=
+    # line too long
+    E501,
+    # wildcard import used
+    F403,
+    # wildcard imported but "unused"
+    F401,
+    

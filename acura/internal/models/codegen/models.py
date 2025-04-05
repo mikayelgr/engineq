@@ -5,6 +5,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 import datetime
 import uuid
 
+
 class Base(DeclarativeBase):
     pass
 

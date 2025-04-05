@@ -1,3 +1,7 @@
 {
-  "python.envFile": ""
+  // this is done to avoid issues with env files not being updated
+  "python.envFile": "",
+  "flake8.enabled": true,
+  "flake8.args": ["--config", ".flake8"],
+  "jupyter.notebookFileRoot": "${workspaceFolder}"
 }

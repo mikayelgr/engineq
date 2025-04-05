@@ -1,18 +1,13 @@
-# AVOID MOVING THESE LINES TO OTHER PLACES AS THE PARSING OF THE
-# .ENV FILE FAILS IN MOST CASES DUE TO SOME REASONS.
-from dotenv import load_dotenv, find_dotenv  # nopep8
-load_dotenv(find_dotenv())  # nopep8
-
-import logging
-from sqlalchemy.ext.asyncio import create_async_engine
-import aio_pika
-import asyncio
-import signal
-from pydantic_ai import Agent
-import logfire
-from internal.conf import Config
-import internal.mq
+from internal.models.sql import SQLDatabase
 from pythonjsonlogger.json import JsonFormatter
+import internal.mq
+from internal.conf import Config
+import logfire
+from pydantic_ai import Agent
+import signal
+import asyncio
+import aio_pika
+import logging
 
 
 async def main() -> int:
@@ -36,9 +31,7 @@ async def main() -> int:
 
     try:
         # Connecting to PostgreSQL
-        pgengine = create_async_engine(
-            conf.POSTGRES_URL, echo=conf.DEBUG, isolation_level="AUTOCOMMIT")
-        pg = await pgengine.connect().start()
+        await SQLDatabase.get_connection()
         logging.getLogger(__name__).info("Connected to PostgreSQL...")
     except Exception as e:
         logging.getLogger(__name__).error("PostgreSQL Connection Error: %s", e)
@@ -49,10 +42,10 @@ async def main() -> int:
         logging.getLogger(__name__).info("Connected to RabbitMQ...")
     except Exception as e:
         logging.getLogger(__name__).error("AMQP Connection Error: %s", e)
-        await pg.close()
-        await pgengine.dispose()
+        await SQLDatabase.close()
         return -1
 
+    exit_code = 0
     try:
         logging.info("Acura is starting...")
         logging.info("Logfire is initializing...")
@@ -61,7 +54,7 @@ async def main() -> int:
 
         # Start consuming messages and wait for the stop event
         consume_tasks = asyncio.create_task(
-            internal.mq.start_consuming(mq, pg))
+            internal.mq.start_consuming(mq))
         await stop_event.wait()
         consume_tasks.cancel()
         try:
@@ -70,19 +63,14 @@ async def main() -> int:
             logging.getLogger(__name__).info("Stopping message consumption...")
     except Exception as e:
         logging.getLogger(__name__).error("Unhandled error: %s", e)
+        exit_code = -1
     finally:
         logging.getLogger(__name__).info("Acura is shutting down...")
-        # Stopping the consumption of the iterator is required for graceful
-        # shutdown of the event loop.
-
         # Gracefully close the PostgreSQL connection
         await mq.close()
+        await SQLDatabase.close()
 
-        # Gracefully close the PostgreSQL connection
-        await pg.close()
-        await pgengine.dispose()
-
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":
