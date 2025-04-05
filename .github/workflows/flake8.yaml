@@ -31,8 +31,12 @@ jobs:
 
       # Install dependencies using Poetry
       - name: Install dependencies
-        run: poetry install
+        run: |
+          cd acura
+          poetry install
 
       # Run flake8
       - name: Run flake8
-        run: poetry run flake8 .
+        run: |
+          cd acura
+          poetry run flake8 .
