@@ -1,4 +1,4 @@
-FROM python:3.11-alpine
+FROM python:3.11
 
 RUN pip install poetry==2.1.1
 
@@ -10,6 +10,9 @@ ENV POETRY_NO_INTERACTION=1 \
 COPY . /acura
 WORKDIR /acura
 
+# Needed by poetry install
+RUN apt update
+RUN apt -y install gcc python3-dev
 RUN poetry install
 RUN rm -rf $POETRY_CACHE_DIR
 
