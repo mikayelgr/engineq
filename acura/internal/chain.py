@@ -17,6 +17,7 @@ MAX_RETRIES = 3
 @dataclass
 class GraphState:
     retry_count: int = 0
+    error_info: str | None = None
 
 
 @dataclass
@@ -63,11 +64,18 @@ __CONSTRAINTS__
 """
     )
 
-    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> 'RetrieveSpotifyPlaylistsNode':
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> 'SearchSpotifyPlaylistsNode':
+        if ctx.state.error_info:
+            logging.getLogger(__name__).error(
+                f"Error in previous step: {ctx.state.error_info}")
+        if ctx.state.retry_count >= MAX_RETRIES:
+            return End(None)
+
         try:
             ambiance_prompt = (await ctx.deps.pg.execute(select(Prompts).where(Prompts.sid == ctx.deps.sid))).one()
             flow = await self.query_gen_agent.run(ambiance_prompt.prompt)
-            return RetrieveSpotifyPlaylistsNode(query=flow.data)
+            query = flow.data
+            return SearchSpotifyPlaylistsNode(query)
         except Exception as e:
             logging.getLogger(__name__).error(
                 f"Error during query generation: {e}")
@@ -75,26 +83,23 @@ __CONSTRAINTS__
 
 
 @dataclass
-class RetrieveSpotifyPlaylistsNode(BaseNode[GraphState, GraphDeps]):
+class SearchSpotifyPlaylistsNode(BaseNode[GraphState, GraphDeps]):
     """
     Retrieves Spotify playlists.
     """
     query: str | None
-    next_playlists_page_url: str | None = None
 
-    async def run(self, _: GraphRunContext[GraphState, GraphDeps]) -> 'MatchSpotifyPlaylistNode':
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> 'MatchQueryWithSpotifyPlaylist':
         try:
-            playlists, next_url = await SpotifyService.search_playlists(
-                query=self.query,
-                next_url=self.next_playlists_page_url
-            )
-            if len(playlists) == 0:
-                return End(None)
+            playlists, _ = await SpotifyService.search_playlists(query=self.query)
+            if not playlists:
+                ctx.state.retry_count += 1
+                ctx.state.error_info = f"No playlists found for query: {self.query}"
+                return GenerateSearchQueryNode()
 
-            return MatchSpotifyPlaylistNode(
+            return MatchQueryWithSpotifyPlaylist(
                 query=self.query,
                 found_playlists=playlists,
-                next_playlists_page_url=next_url
             )
         except Exception as e:
             logging.getLogger(__name__).error(
@@ -103,13 +108,12 @@ class RetrieveSpotifyPlaylistsNode(BaseNode[GraphState, GraphDeps]):
 
 
 @dataclass
-class MatchSpotifyPlaylistNode(BaseNode[GraphState, GraphDeps]):
+class MatchQueryWithSpotifyPlaylist(BaseNode[GraphState, GraphDeps]):
     """
     Matches Spotify playlists against the generated query and filters tracks using an agent.
     """
     query: str
     found_playlists: dict
-    next_playlists_page_url: str | None = None
 
     playlist_filter_agent = Agent(
         model=decide_llm(),
@@ -131,10 +135,12 @@ as the title and the description of the playlist.
     )
 
     async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> 'SearchYoutubeNode' | End[None]:
-        matched_tracks = []
         matched_playlist = None
 
         for playlist in self.found_playlists:
+            if playlist is None:
+                continue
+
             try:
                 flow = await self.playlist_filter_agent.run(f"""
 __PLAYLIST INFO__
@@ -142,7 +148,7 @@ __PLAYLIST INFO__
 2. Description: {playlist['description']}
 
 __ASK__
-The user wants playlists which match his criteria defined as follows: {self.query}
+This is their query: {self.query}
 """)
                 is_playlist_match = flow.data
                 if is_playlist_match:
@@ -155,28 +161,12 @@ The user wants playlists which match his criteria defined as follows: {self.quer
 
         if matched_playlist:
             pid = matched_playlist["id"]
-            next_playlist_url = None
-
-            while True:
-                entries, next_playlist_url = await SpotifyService.get_playlist_entries_by_id(
-                    pid, next_url=next_playlist_url
-                )
-
-                for entry in entries:
-                    track: dict = entry.get("track")
-                    if not track.get("explicit", False):
-                        matched_tracks.append(track)
-
-                if not next_playlist_url:
-                    break
+            tracks = await SpotifyService.get_playlist_tracks(pid)
+            return SearchYoutubeNode(tracks=filter(lambda track: not track["explicit"], tracks))
         else:
             ctx.state.retry_count += 1
+            ctx.state.error_info = f"No matching playlists found for query: {self.query}"
             return GenerateSearchQueryNode()
-
-        if matched_tracks:
-            return SearchYoutubeNode(tracks=matched_tracks)
-
-        return End(None)
 
 
 @dataclass
@@ -186,24 +176,73 @@ class SearchYoutubeNode(BaseNode[GraphState, GraphDeps]):
     """
     tracks: list[dict]
 
-    async def run(self, _: GraphRunContext[GraphState, GraphDeps]) -> 'VerifyYoutubeNode':
+    @classmethod
+    def parse_time_to_milliseconds(self, time_str):
+        parts = list(map(int, time_str.split(":")))
+        if len(parts) == 3:
+            hours, minutes, seconds = parts
+        elif len(parts) == 2:
+            hours = 0
+            minutes, seconds = parts
+        elif len(parts) == 1:
+            hours = minutes = 0
+            seconds = parts[0]
+        else:
+            raise ValueError("Invalid time format")
+
+        total_milliseconds = ((hours * 3600) + (minutes * 60) + seconds) * 1000
+        return total_milliseconds
+
+    async def run(self, _: GraphRunContext[GraphState, GraphDeps]) -> 'VerifyYoutubeResultsAgainstSpotifyNode':
         tracks = []
         for track in self.tracks:
             query = f"{track['name']} {track['artists'][0]['name']}"
             try:
-                results = await BraveSearchService.search_youtube(query, 2)
+                results: list[dict] = await BraveSearchService.search_youtube_for_videos(query, 2)
+                if not results:
+                    logging.getLogger(__name__).warning(
+                        f"No YouTube results found for track '{track['name']}'")
+                    continue
+
+                # TODO: Implement duration analysis for tracks, so that the playlist
+                # doesn't get cluttered with tracks which are either shorts, etc.
+                # for r in results:
+                #     if ("video" not in r) or ("duration" not in r["video"]):
+                #         # Skip results which don't have metadata about the video
+                #         continue
+                #
+                #     video_duration_ms = self.parse_time_to_milliseconds(
+                #         r["video"]["duration"])
+                #     if video_duration_ms < 60 * 1000:
+                #         # Skip videos which are shorter than 1 minute
+                #         continue
+                #     if video_duration_ms > track["duration_ms"] * 1.5:
+                #         # Skip videos which are longer than 1.5 times the track duration
+                #         continue
+                #     correct_youtube_results.append(r)
+                # if not correct_youtube_results:
+                #     logging.getLogger(__name__).warning(
+                #         f"No valid YouTube results found for track '{track['name']}'")
+                #     continue
+
                 # This data will be later used to verify if the video is a music video
                 # when searching for the track on YouTube.
                 tracks.append(
-                    {"spotify_track": track, "youtube_results": results})
+                    {"spotify_track": track, "search_results": results})
             except Exception as e:
                 logging.getLogger(__name__).error(
                     f"Error searching YouTube for track '{track['name']}': {e}")
-        return VerifyYoutubeNode(tracks)
+
+                # It is more beneficial to end early at this stage, because Brave's API
+                # is much more expensive, so it would not make sense to continue searching
+                # in case an error occurs and waste credits for other APIs.
+                return End(None)
+
+        return VerifyYoutubeResultsAgainstSpotifyNode(tracks)
 
 
 @dataclass
-class VerifyYoutubeNode(BaseNode[GraphState, GraphDeps]):
+class VerifyYoutubeResultsAgainstSpotifyNode(BaseNode[GraphState, GraphDeps]):
     """
     Verifies YouTube results to ensure they are music videos.
     """
@@ -213,7 +252,7 @@ class VerifyYoutubeNode(BaseNode[GraphState, GraphDeps]):
         verified_tracks = []
         for i in range(len(self.tracks)):
             spotify_track = self.tracks[i]["spotify_track"]
-            youtube_results = self.tracks[i]["youtube_results"]
+            youtube_results = self.tracks[i]["search_results"]
             for youtube_result in youtube_results:
                 similarity = Levenshtein.ratio(
                     f"{spotify_track['name'].lower()} - {spotify_track['artists'][0]['name'].lower()}",
@@ -232,7 +271,7 @@ class VerifyYoutubeNode(BaseNode[GraphState, GraphDeps]):
                         "title": spotify_track["name"],
                         "uri": youtube_result["url"],
                         "artist": spotify_track["artists"][0]["name"],
-                        "duration": spotify_track["duration_ms"] / 1000,
+                        "duration": 0,  # TODO: This needs to be fixed in the future
                         "explicit": spotify_track["explicit"],
                         "image": spotify_track.get("album", {}).get("images", [{}])[0].get("url", None),
                     })
@@ -248,8 +287,8 @@ class MusicDiscoveryPipeline:
     Orchestrates the music discovery process.
     """
     graph = Graph(
-        nodes=(GenerateSearchQueryNode, RetrieveSpotifyPlaylistsNode,
-               MatchSpotifyPlaylistNode, SearchYoutubeNode, VerifyYoutubeNode),
+        nodes=(GenerateSearchQueryNode, SearchSpotifyPlaylistsNode,
+               MatchQueryWithSpotifyPlaylist, SearchYoutubeNode, VerifyYoutubeResultsAgainstSpotifyNode),
         run_end_type=list[dict],
         name="Music Discovery Pipeline"
     )

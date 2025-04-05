@@ -12,13 +12,13 @@ class BraveSearchService:
         headers={"Accept": "application/json"})
 
     @classmethod
-    async def _make_request(cls, endpoint: str, params: dict, headers: dict = None, max_retries: int = 5):
+    async def _make_request(self, endpoint: str, params: dict, headers: dict = None, max_retries: int = 5):
         retries = 0
         backoff = 1  # Initial backoff in seconds
 
         while retries < max_retries:
             try:
-                response = await cls.__client.get(endpoint, params=params, headers=headers)
+                response = await self.__client.get(endpoint, params=params, headers=headers)
 
                 if response.status_code == 429:
                     retries += 1
@@ -40,7 +40,7 @@ class BraveSearchService:
             "Max retries exceeded while trying to perform the request.")
 
     @classmethod
-    async def search_youtube(cls, query: str, num_results: int = 2):
+    async def search_youtube_for_videos(self, query: str, num_results: int = 2) -> list[dict]:
         query = "site:youtube.com" + ' ' + query
         params = {
             "q": query,
@@ -51,9 +51,12 @@ class BraveSearchService:
             "text_decorations": False,
         }
         headers = {"X-Subscription-Token": Config().BRAVE_SEARCH_TOKEN}
+        response_data = await self._make_request("/res/v1/web/search", params=params, headers=headers)
 
-        response_data = await cls._make_request("/res/v1/web/search", params=params, headers=headers)
-        if ("web" not in response_data) or (len(response_data["web"]["results"]) == 0):
-            return None
+        results = []
+        if ("web" in response_data) and ("results" in response_data["web"]):
+            results.extend(response_data["web"]["results"])
+        if ("videos" in response_data) and ("results" in response_data["videos"]):
+            results.extend(response_data["videos"]["results"])
 
-        return response_data["web"]["results"]
+        return results

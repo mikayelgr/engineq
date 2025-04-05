@@ -45,7 +45,7 @@ class SpotifyService:
         return r.json()["tracks"]
 
     @classmethod
-    async def get_playlist_entries_by_id(self, id: str, next_url: str | None = None) -> tuple[list[dict], str | None]:
+    async def get_playlist_tracks(self, id: str) -> tuple[list[dict], str | None]:
         # Check if the bearer token is expired or even exists. This is required
         # for all API calls.
         if self.__token_expired():
@@ -54,23 +54,35 @@ class SpotifyService:
         # Set the target URL for the API call. If `next_url` is provided, use it
         # to get the next page of results. Otherwise, use the default URL.
         target_url = f"/v1/playlists/{id}/tracks"
-        if next_url:
-            parsed_url = urllib.parse.urlparse(next_url)
-            path = parsed_url.path
-            query = parsed_url.query
-            target_url = path + "?" + query
+        found_tracks = []
+        while True:
+            r = await self._client.get(
+                target_url,
+                headers={"Authorization": f"Bearer {self.__bearer_token}"}
+            )
 
-        r = await self._client.get(
-            target_url,
-            params={"limit": 50},  # Default limit is 50 for now
-            headers={"Authorization": f"Bearer {self.__bearer_token}"}
-        )
+            r.raise_for_status()
+            json: dict = r.json()
+            # Append the entries to the list
+            found_tracks.extend(
+                map(lambda entry: entry["track"], json["items"]))
+            if json["next"]:
+                # Parse the next URL to get the path and query parameters
+                parsed_url = urllib.parse.urlparse(json["next"])
+                path = parsed_url.path
+                query = parsed_url.query
 
-        r.raise_for_status()
-        return (r.json()["items"], r.json()["next"])
+                # Use the path and query parameters to set the target URL for the next request
+                target_url = path
+                if query:
+                    target_url += '?' + query
+            else:
+                break
+
+        return found_tracks
 
     @classmethod
-    async def search_playlists(self, query: str | None = None, next_url: str | None = None) -> tuple[list[dict], str | None]:
+    async def search_playlists(self, query: str | None = None, next_url: str | None = None, limit: int = 10) -> tuple[list[dict], str | None]:
         if (query is None) and (next_url is None):
             raise ValueError(
                 "Either `query` or `next_url` must be provided to search playlists.")
@@ -93,7 +105,7 @@ class SpotifyService:
         else:
             r = await self._client.get(
                 "/v1/search",
-                params={"q": query, "type": "playlist", "limit": 10},
+                params={"q": query, "type": "playlist", "limit": limit},
                 headers={"Authorization": f"Bearer {self.__bearer_token}"}
             )
 
