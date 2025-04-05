@@ -23,7 +23,6 @@ export default function Player() {
         id={"player"}
         controls
         muted={isMuted}
-        volume={100}
         onEnded={() => next()}
         url={currentTrack.uri}
         width={"100%"}
