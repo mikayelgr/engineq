@@ -4,6 +4,7 @@ from internal.models.sql import SQLDatabase
 from sqlalchemy import select, insert, func, literal_column
 import logging
 from sqlalchemy.exc import IntegrityError
+from asyncpg.exceptions import UniqueViolationError
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,13 @@ class PlaylistsDAO:
                     .values(sid=sid, created_at=func.current_date())
                     .returning(literal_column("id"))
                 )
-            except IntegrityError:
+            except IntegrityError as e:
+                # Check if the error is due to a unique constraint violation
+                if isinstance(e.orig, UniqueViolationError):
+                    logger.warning("Playlist already exists for SID %s", sid)
+                else:
+                    logger.error("Failed to create playlist: %s", e)
+
                 # Fallback to selecting the existing playlist if the insert fails
                 r = await pg.execute(
                     select(Playlists.id)
@@ -85,7 +92,12 @@ class TracksDAO:
                     ).returning(literal_column("*"))
                 )
                 return r.one_or_none()
-        except IntegrityError:
+        except IntegrityError as e:
+            # Handle unique constraint violation or other integrity errors
+            if isinstance(e.orig, UniqueViolationError):
+                logger.warning("Track already exists: %s", track_data)
+            else:
+                logger.error("Failed to create track: %s", e)
             logger.warning("Failed to create track: %s", track_data)
             return None
 
