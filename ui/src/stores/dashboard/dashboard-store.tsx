@@ -14,6 +14,7 @@ export type Track = {
 
 export type DashboardState = {
   queue: Track[];
+  isMuted: boolean;
   isPlaying: boolean;
   currentTrackId: number;
   currentTrack: Track | null;
@@ -24,6 +25,7 @@ export type DashboardActions = {
   play: () => void;
   pause: () => void;
   next: () => void;
+  toggleMuted: () => void;
   setQueue: (tracks: Track[]) => void;
   addToQueue: (tracks: Track[]) => void; // New method to properly add tracks
   setCurrentTrackId: (id: number) => void;
@@ -34,6 +36,7 @@ export type DashboardStore = DashboardState & DashboardActions;
 
 export const defaultInitState: DashboardState = {
   queue: [],
+  isMuted: false,
   isPlaying: false,
   currentTrack: null,
   currentTrackId: -1,
@@ -47,6 +50,12 @@ export const createDashboardStore = (
     devtools(
       (set) => ({
         ...initState,
+        toggleMuted: () =>
+          set(
+            ({ isMuted }) => ({ isMuted: !isMuted }),
+            undefined,
+            "dashboard-store/toggleMuted"
+          ),
         next: () =>
           set(
             ({ queue, setCurrentTrackId }) => {
@@ -69,12 +78,15 @@ export const createDashboardStore = (
                   lastFetchTimestamp: Date.now(),
                 };
               }
-              
+
               // Handle adding tracks to existing queue
               return {
                 queue: tracks,
                 // Don't change currentTrackId if already playing something
-                currentTrackId: s.currentTrackId >= 0 ? s.currentTrackId : tracks[0]?.id ?? -1,
+                currentTrackId:
+                  s.currentTrackId >= 0
+                    ? s.currentTrackId
+                    : (tracks[0]?.id ?? -1),
                 currentTrack: s.currentTrack ?? tracks[0] ?? null,
                 lastFetchTimestamp: Date.now(),
               };
@@ -87,17 +99,22 @@ export const createDashboardStore = (
             (state) => {
               // Deduplicate tracks based on track ID
               const existingIds = new Set(state.queue.map((track) => track.id));
-              const filteredTracks = newTracks.filter((track) => !existingIds.has(track.id));
-              
+              const filteredTracks = newTracks.filter(
+                (track) => !existingIds.has(track.id)
+              );
+
               if (filteredTracks.length === 0) {
                 return {}; // No changes if no new tracks
               }
-              
+
               const updatedQueue = [...state.queue, ...filteredTracks];
-              
+
               return {
                 queue: updatedQueue,
-                currentTrackId: state.currentTrackId >= 0 ? state.currentTrackId : updatedQueue[0]?.id ?? -1,
+                currentTrackId:
+                  state.currentTrackId >= 0
+                    ? state.currentTrackId
+                    : (updatedQueue[0]?.id ?? -1),
                 currentTrack: state.currentTrack ?? updatedQueue[0] ?? null,
               };
             },

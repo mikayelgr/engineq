@@ -2,12 +2,20 @@
 
 import { useDashboardStore } from "@/src/providers/dashboard/dashboard-store-provider";
 import { Button, ButtonGroup } from "@heroui/react";
-import { Pause, Play, SkipForward } from "lucide-react";
+import { Pause, Play, SkipForward, Volume2, VolumeOff } from "lucide-react";
 import { useEffect } from "react";
 
 export default function PlaybackControl() {
-  const { pause, play, next, isPlaying, currentTrackId, queue } =
-    useDashboardStore((s) => s);
+  const {
+    pause,
+    play,
+    next,
+    isPlaying,
+    currentTrackId,
+    queue,
+    isMuted,
+    toggleMuted,
+  } = useDashboardStore((s) => s);
 
   useEffect(() => {
     async function _() {
@@ -20,6 +28,15 @@ export default function PlaybackControl() {
 
   return (
     <ButtonGroup>
+      <Button
+        onPress={() => toggleMuted()}
+        size="sm"
+        color="primary"
+        variant="flat"
+        isIconOnly
+      >
+        {isMuted ? <VolumeOff size={16} /> : <Volume2 size={16} />}
+      </Button>
       <Button
         variant="flat"
         color="primary"

@@ -7,9 +7,8 @@ import { Skeleton } from "@heroui/react";
 import ReactPlayer from "react-player";
 
 export default function Player() {
-  const { currentTrack, pause, play, isPlaying, next } = useDashboardStore(
-    (s) => s
-  );
+  const { currentTrack, pause, play, isPlaying, next, isMuted } =
+    useDashboardStore((s) => s);
 
   return !currentTrack ? (
     <Skeleton className="w-full md:w-[38rem] h-[20rem] rounded-md" />
@@ -23,6 +22,8 @@ export default function Player() {
         stopOnUnmount
         id={"player"}
         controls
+        muted={isMuted}
+        volume={100}
         onEnded={() => next()}
         url={currentTrack.uri}
         width={"100%"}

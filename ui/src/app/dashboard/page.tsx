@@ -1,7 +1,7 @@
 import Player from "@/src/components/dashboard/player";
 import PlaybackQueue from "@/src/components/dashboard/playback-queue";
 import CurrentPlaybackInfo from "@/src/components/dashboard/current-playback-info";
-import StatsGroup from "@/src/components/dashboard/stats-group";
+// import StatsGroup from "@/src/components/dashboard/stats-group";
 
 export default function DashboardContent() {
   return (
