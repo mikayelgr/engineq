@@ -1,0 +1,38 @@
+name: Lint with Flake8
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  flake8-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11" # Adjust this to match your Python version
+
+      # Install Poetry
+      - name: Install Poetry
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+
+      # Install dependencies using Poetry
+      - name: Install dependencies
+        run: poetry install
+
+      # Run flake8
+      - name: Run flake8
+        run: poetry run flake8 .
