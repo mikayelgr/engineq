@@ -79,16 +79,23 @@ class RetrieveSpotifyPlaylistsNode(BaseNode[GraphState, GraphDeps]):
     """
     Retrieves Spotify playlists.
     """
-    query: str
-    next_page_url: str | None = None
+    query: str | None
+    next_playlists_page_url: str | None = None
 
     async def run(self, _: GraphRunContext[GraphState, GraphDeps]) -> 'MatchSpotifyPlaylistNode':
         try:
-            playlists = await SpotifyService.get_spotify_curated_playlists(next=self.next_page_url)
-            if len(playlists.get("items", [])) == 0:
+            playlists, next_url = await SpotifyService.search_playlists(
+                query=self.query,
+                next_url=self.next_playlists_page_url
+            )
+            if len(playlists) == 0:
                 return End(None)
 
-            return MatchSpotifyPlaylistNode(query=self.query, playlists=playlists)
+            return MatchSpotifyPlaylistNode(
+                query=self.query,
+                found_playlists=playlists,
+                next_playlists_page_url=next_url
+            )
         except Exception as e:
             logging.getLogger(__name__).error(
                 f"Error retrieving Spotify playlists: {e}")
@@ -101,7 +108,8 @@ class MatchSpotifyPlaylistNode(BaseNode[GraphState, GraphDeps]):
     Matches Spotify playlists against the generated query and filters tracks using an agent.
     """
     query: str
-    playlists: dict
+    found_playlists: dict
+    next_playlists_page_url: str | None = None
 
     playlist_filter_agent = Agent(
         model=decide_llm(),
@@ -122,35 +130,51 @@ as the title and the description of the playlist.
 """
     )
 
-    async def run(self, _: GraphRunContext[GraphState, GraphDeps]) -> 'SearchYoutubeNode' | End[None]:
-        filtered_tracks = []
-        selected_playlist = None
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> 'SearchYoutubeNode' | End[None]:
+        matched_tracks = []
+        matched_playlist = None
 
-        for playlist in self.playlists.get("items", []):
+        for playlist in self.found_playlists:
             try:
-                flow = await self.playlist_filter_agent.run(f"Desired Tracks in Playlist: {self.query}\nPlaylist title: {playlist['name']}\nPlaylist description: {playlist['description']}")
+                flow = await self.playlist_filter_agent.run(f"""
+__PLAYLIST INFO__
+1. Title: {playlist['name']}
+2. Description: {playlist['description']}
+
+__ASK__
+The user wants playlists which match his criteria defined as follows: {self.query}
+""")
                 is_playlist_match = flow.data
                 if is_playlist_match:
-                    selected_playlist = playlist
+                    matched_playlist = playlist
                     break
 
             except Exception as e:
                 logging.getLogger(__name__).error(
                     f"Error filtering playlist '{playlist['name']}': {e}")
 
-        if selected_playlist is not None:
-            entries = await SpotifyService.get_playlist_entries_by_id(selected_playlist["id"])
-            for entry in entries:
-                track = entry.get("track")
-                if not track.get("explicit", False):
-                    filtered_tracks.append(track)
-        else:
-            logging.getLogger(__name__).warning(
-                f"No matching playlists found for: '{self.query}'. Trying next page...")
-            return RetrieveSpotifyPlaylistsNode(query=self.query, next_page_url=self.playlists.get("next"))
+        if matched_playlist:
+            pid = matched_playlist["id"]
+            next_playlist_url = None
 
-        if filtered_tracks:
-            return SearchYoutubeNode(tracks=filtered_tracks)
+            while True:
+                entries, next_playlist_url = await SpotifyService.get_playlist_entries_by_id(
+                    pid, next_url=next_playlist_url
+                )
+
+                for entry in entries:
+                    track: dict = entry.get("track")
+                    if not track.get("explicit", False):
+                        matched_tracks.append(track)
+
+                if not next_playlist_url:
+                    break
+        else:
+            ctx.state.retry_count += 1
+            return GenerateSearchQueryNode()
+
+        if matched_tracks:
+            return SearchYoutubeNode(tracks=matched_tracks)
 
         return End(None)
 

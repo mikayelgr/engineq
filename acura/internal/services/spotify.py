@@ -45,115 +45,61 @@ class SpotifyService:
         return r.json()["tracks"]
 
     @classmethod
-    async def get_playlist_entries_by_id(self, id: str) -> list[dict]:
-        """
-        Get the tracks from a playlist by its ID from Spotify. In case of
-        multiple IDs, the function will return an array.
-
-        NOTE: This function is not implemented completely yet. It assumes that
-        the maximum number of tracks in a playlist does not exceed 50.
-        """
-
+    async def get_playlist_entries_by_id(self, id: str, next_url: str | None = None) -> tuple[list[dict], str | None]:
         # Check if the bearer token is expired or even exists. This is required
         # for all API calls.
         if self.__token_expired():
             await self.__set_token()
 
-        # Example API call (replace with actual implementation)
-        r = await self._client.get(
-            f"/v1/playlists/{id}/tracks",
-            # params={"limit": 50},  # Default limit is 50 for now
-            headers={"Authorization": f"Bearer {self.__bearer_token}"}
-        )
-
-        r.raise_for_status()
-        return r.json()["items"]
-
-    @classmethod
-    async def get_spotify_curated_playlists(self, next: str | None = None, limit: int = 50) -> dict:
-        """
-        Get the playlists of the user `spotify`. Essentially, this is the
-        same as the Spotify curated playlists. The user `spotify` is the
-        official Spotify account.
-
-        A sample response will have the following JSON structure:
-        ```
-        {
-            "href": "https://api.spotify.com/v1/users/spotify/playlists?offset=0&limit=10&locale=en-US,en;q%3D0.9,ru;q%3D0.8",
-            "limit": 10,
-            "next": "https://api.spotify.com/v1/users/spotify/playlists?offset=10&limit=10&locale=en-US,en;q%3D0.9,ru;q%3D0.8",
-            "offset": 0,
-            "previous": null,
-            "total": 348,
-            "items": [
-                    {
-                    "collaborative": false,
-                    "description": "All songs about drinking, cheating, heartaches and everything else going on in a classic honky tonk.",
-                    "external_urls": {
-                        "spotify": "https://open.spotify.com/playlist/0NfjMqrzcGKVsbYZmhf4Md"
-                    },
-                    "href": "https://api.spotify.com/v1/playlists/0NfjMqrzcGKVsbYZmhf4Md",
-                    "id": "0NfjMqrzcGKVsbYZmhf4Md",
-                    "images": [
-                        {
-                        "height": null,
-                        "url": "https://image-cdn-ak.spotifycdn.com/image/ab67706c0000da8430ec0eff4844b5161b5075b0",
-                        "width": null
-                        }
-                    ],
-                    "name": "Classic Honky Tonk",
-                    "owner": {
-                        "display_name": "Spotify",
-                        "external_urls": {
-                        "spotify": "https://open.spotify.com/user/spotify"
-                        },
-                        "href": "https://api.spotify.com/v1/users/spotify",
-                        "id": "spotify",
-                        "type": "user",
-                        "uri": "spotify:user:spotify"
-                    },
-                    "primary_color": null,
-                    "public": true,
-                    "snapshot_id": "AAAAC/9fnrEKWUIXFE/48FUgTppvFjnb",
-                    "tracks": {
-                        "href": "https://api.spotify.com/v1/playlists/0NfjMqrzcGKVsbYZmhf4Md/tracks",
-                        "total": 50
-                    },
-                    "type": "playlist",
-                    "uri": "spotify:playlist:0NfjMqrzcGKVsbYZmhf4Md"
-                    }
-            ]
-        """
-
-        # Check if the bearer token is expired or even exists. This is required
-        # for all API calls.
-        if self.__token_expired():
-            await self.__set_token()
-
-        # Set the target URL for the API call. If `next` is provided, use it
+        # Set the target URL for the API call. If `next_url` is provided, use it
         # to get the next page of results. Otherwise, use the default URL.
-        #
-        # NOTE: We cannot get algorithmically-generated or curated playlists
-        # from Spotify/authored by spotify. Hence, we must find some other user
-        # to get the playlists from whose playlists include mainstream music.
-        # See:
-        # - https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api
-        # - https://community.spotify.com/t5/Spotify-for-Developers/Using-API-Can-t-get-playlists/td-p/6612714
-        # target_url = "/v1/users/spotify/playlists"
-        target_url = "/v1/users/holgerchristoph/playlists"
-        if next is not None:
-            target_url = urllib.parse.urlparse(next).path
-            target_url += "?" + urllib.parse.urlparse(next).query
+        target_url = f"/v1/playlists/{id}/tracks"
+        if next_url:
+            parsed_url = urllib.parse.urlparse(next_url)
+            path = parsed_url.path
+            query = parsed_url.query
+            target_url = path + "?" + query
 
-        # Example API call (replace with actual implementation)
         r = await self._client.get(
             target_url,
-            params={"limit": limit},
+            params={"limit": 50},  # Default limit is 50 for now
             headers={"Authorization": f"Bearer {self.__bearer_token}"}
         )
 
         r.raise_for_status()
-        return r.json()
+        return (r.json()["items"], r.json()["next"])
+
+    @classmethod
+    async def search_playlists(self, query: str | None = None, next_url: str | None = None) -> tuple[list[dict], str | None]:
+        if (query is None) and (next_url is None):
+            raise ValueError(
+                "Either `query` or `next_url` must be provided to search playlists.")
+
+        # Check if the bearer token is expired or even exists. This is required
+        # for all API calls.
+        if self.__token_expired():
+            await self.__set_token()
+
+        if next_url is not None:
+            # Use the next URL to get the next page of results
+            parsed_url = urllib.parse.urlparse(next_url)
+            path = parsed_url.path
+            query = parsed_url.query
+            r = await self._client.get(
+                path,
+                params=query,
+                headers={"Authorization": f"Bearer {self.__bearer_token}"}
+            )
+        else:
+            r = await self._client.get(
+                "/v1/search",
+                params={"q": query, "type": "playlist", "limit": 10},
+                headers={"Authorization": f"Bearer {self.__bearer_token}"}
+            )
+
+        r.raise_for_status()
+        r = r.json()
+        return (r["playlists"]["items"], r["playlists"]["next"])
 
     @classmethod
     def __token_expired(self) -> bool:
