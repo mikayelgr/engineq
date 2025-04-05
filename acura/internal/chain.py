@@ -8,6 +8,7 @@ from pydantic_graph import BaseNode, GraphRunContext, End, Graph
 import Levenshtein
 from internal.models.dao import PromptsDAO, PlaylistsDAO, TracksDAO
 from typing import Union
+from internal.services.track_embeddings import TrackEmbeddingsService
 
 # Maximum number of retries for executing the workflow
 MAX_RETRIES = 3
@@ -15,6 +16,8 @@ MAX_RETRIES = 3
 
 @dataclass
 class GraphState:
+    spotify_search_query: str | None = None
+
     retry_count: int = 0
     error_info: str | None = None
 
@@ -70,7 +73,8 @@ __CONSTRAINTS__
             prompts = await PromptsDAO.get_subscriber_prompts_by_sid(ctx.deps.sid)
             prompt = prompts[0].prompt
             flow = await self.query_gen_agent.run(prompt)
-            return SearchSpotifyPlaylistsNode(flow.data)
+            ctx.state.spotify_search_query = flow.data
+            return SearchSpotifyPlaylistsNode()
         except Exception as e:
             logging.getLogger(__name__).error(
                 f"Error during query generation: {e}")
@@ -82,20 +86,16 @@ class SearchSpotifyPlaylistsNode(BaseNode[GraphState, GraphDeps]):
     """
     Retrieves Spotify playlists.
     """
-    query: str | None
 
     async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> "MatchQueryWithSpotifyPlaylist":
         try:
-            playlists, _ = await SpotifyService.search_playlists(query=self.query)
+            playlists, _ = await SpotifyService.search_playlists(query=ctx.state.spotify_search_query)
             if not playlists:
                 ctx.state.retry_count += 1
-                ctx.state.error_info = f"No playlists found for query: {self.query}"
+                ctx.state.error_info = f"No playlists found for query: {ctx.state.spotify_search_query}"
                 return GenerateSearchQueryNode()
 
-            return MatchQueryWithSpotifyPlaylist(
-                query=self.query,
-                found_playlists=playlists,
-            )
+            return MatchQueryWithSpotifyPlaylist(playlists)
         except Exception as e:
             logging.getLogger(__name__).error(
                 f"Error retrieving Spotify playlists: {e}")
@@ -107,7 +107,6 @@ class MatchQueryWithSpotifyPlaylist(BaseNode[GraphState, GraphDeps]):
     """
     Matches Spotify playlists against the generated query and filters tracks using an agent.
     """
-    query: str
     found_playlists: dict
 
     playlist_filter_agent = Agent(
@@ -143,7 +142,7 @@ __PLAYLIST INFO__
 2. Description: {playlist['description']}
 
 __ASK__
-This is their query: {self.query}
+This is their search query: {ctx.state.spotify_search_query}
 """)
                 is_playlist_match = flow.data
                 if is_playlist_match:
@@ -156,11 +155,11 @@ This is their query: {self.query}
 
         if matched_playlist:
             pid = matched_playlist["id"]
-            tracks = await SpotifyService.get_playlist_tracks(pid, 10)
+            tracks = await SpotifyService.get_playlist_tracks(pid)
             return SearchYoutubeNode(tracks=filter(lambda track: not track["explicit"], tracks))
         else:
             ctx.state.retry_count += 1
-            ctx.state.error_info = f"No matching playlists found for query: {self.query}"
+            ctx.state.error_info = f"No matching playlists found for query: {ctx.state.spotify_search_query}"
             return GenerateSearchQueryNode()
 
 
@@ -174,9 +173,9 @@ class SearchYoutubeNode(BaseNode[GraphState, GraphDeps]):
     async def run(self, _: GraphRunContext[GraphState, GraphDeps]) -> 'VerifyAndSaveSuggestionsNode':
         tracks = []
         for track in self.tracks:
-            query = f"{track['name']} {track['artists'][0]['name']}"
+            brave_search_query = f"{track['name']} {track['artists'][0]['name']}"
             try:
-                results: list[dict] = await BraveSearchService.search_youtube_for_videos(query, 2)
+                results: list[dict] = await BraveSearchService.search_youtube_for_videos(brave_search_query, 2)
                 if not results:
                     logging.getLogger(__name__).warning(
                         f"No YouTube results found for track '{track['name']}'")
@@ -228,15 +227,13 @@ class VerifyAndSaveSuggestionsNode(BaseNode[GraphState, GraphDeps]):
 
     async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> End:
         playlist = await PlaylistsDAO.create_or_get_playlist(ctx.deps.sid)
-
         for i in range(len(self.tracks)):
-            verified_track = None
-            spotify_track = self.tracks[i]["spotify_track"]
-            youtube_results = self.tracks[i]["search_results"]
+            spotify_track: dict = self.tracks[i]["spotify_track"]
+            youtube_results: list[dict] = self.tracks[i]["search_results"]
             for youtube_result in youtube_results:
                 similarity = Levenshtein.ratio(
                     f"{spotify_track['name'].lower()} - {spotify_track['artists'][0]['name'].lower()}",
-                    youtube_result["title"].lower()
+                    youtube_result['title'].lower()
                 )
 
                 # Here, we are using Levenshtein distance to check if the title of the
@@ -247,6 +244,12 @@ class VerifyAndSaveSuggestionsNode(BaseNode[GraphState, GraphDeps]):
                 # video is a music video. We can assume that if the title is similar to
                 # the track name, it is likely a music video.
                 if youtube_result and similarity > 0.68:
+                    embedding = await TrackEmbeddingsService.create_embedding(
+                        ctx.state.spotify_search_query,
+                        spotify_track["name"],
+                        spotify_track["artists"][0]["name"],
+                    )
+
                     verified_track = {
                         "title": spotify_track["name"],
                         "uri": youtube_result["url"],
@@ -256,10 +259,9 @@ class VerifyAndSaveSuggestionsNode(BaseNode[GraphState, GraphDeps]):
                         "image": spotify_track.get("album", {}).get("images", [{}])[0].get("url", None),
                     }
 
+                    tid = await PlaylistsDAO.add_track_to_playlist(playlist.id, verified_track)
+                    await TracksDAO.update_track_embedding(tid, embedding)
                     break
-
-            if verified_track:
-                await PlaylistsDAO.add_track_to_playlist(playlist.id, verified_track)
 
         return End(None)
 

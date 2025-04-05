@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from internal.models.codegen import Subscribers, Prompts, Playlists, Tracks, Suggestions
 from internal.models.sql import SQLDatabase
-from sqlalchemy import select, insert, func, literal_column
+from sqlalchemy import select, insert, func, literal_column, update
 import logging
 from sqlalchemy.exc import IntegrityError
 from asyncpg.exceptions import UniqueViolationError
@@ -71,10 +71,25 @@ class PlaylistsDAO:
         """
         if track := await TracksDAO.create_track(track_data):
             await SuggestionsDAO.add_track_to_suggestions(playlist_id, track.id)
+            return track.id
 
 
 @dataclass
 class TracksDAO:
+    @classmethod
+    async def update_track_embedding(cls, track_id: int, embedding: list[float]):
+        """
+        Update the embedding for a given track ID.
+        """
+        async with SQLDatabase.connection() as pg:
+            r = await pg.execute(
+                update(Tracks)
+                .where(Tracks.id == track_id)
+                .values(search_embedding=embedding)
+            )
+
+            return r.rowcount
+
     @classmethod
     async def create_track(cls, track_data: dict):
         """

@@ -1,10 +1,10 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKeyConstraint, Integer, PrimaryKeyConstraint, String, Table, Text, UniqueConstraint, Uuid, text
+from pgvector.sqlalchemy.vector import VECTOR
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, Table, Text, UniqueConstraint, Uuid, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 import datetime
 import uuid
-
 
 class Base(DeclarativeBase):
     pass
@@ -38,7 +38,8 @@ class Tracks(Base):
     __tablename__ = 'tracks'
     __table_args__ = (
         PrimaryKeyConstraint('id', name='tracks_pkey'),
-        UniqueConstraint('title', 'artist', name='tracks_title_artist_key')
+        UniqueConstraint('title', 'artist', name='tracks_title_artist_key'),
+        Index('tracks_search_embedding_idx', 'search_embedding')
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -48,6 +49,7 @@ class Tracks(Base):
     uri: Mapped[str] = mapped_column(Text)
     explicit: Mapped[Optional[bool]] = mapped_column(Boolean, server_default=text('false'))
     image: Mapped[Optional[str]] = mapped_column(Text)
+    search_embedding: Mapped[Optional[Any]] = mapped_column(VECTOR(1024))
 
     suggestions: Mapped[List['Suggestions']] = relationship('Suggestions', back_populates='tracks')
 

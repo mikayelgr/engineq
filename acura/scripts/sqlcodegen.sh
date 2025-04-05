@@ -22,5 +22,6 @@ url = '://'.join(url)
 print(url) # we must print, not return, because we are using python3 -c
 ")
 
-# Generate models.py using sqlacodegen
-sqlacodegen "$POSTGRES_URL" > ./internal/models/codegen/models.py;
+# Generate models.py using sqlacodegen. Here, we have to use the tail command to skip the first line of the output
+# which contains something like "Using pgvector x.y.z".
+sqlacodegen "$POSTGRES_URL" | tail -n +2 > ./internal/models/codegen/models.py;

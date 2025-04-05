@@ -5,5 +5,8 @@ ignore=
     # wildcard import used
     F403,
     # wildcard imported but "unused"
-    F401,
+    F401
+
+exclude=
+    ./internal/models/codegen/models.py
     
