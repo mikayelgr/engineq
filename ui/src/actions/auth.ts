@@ -8,7 +8,17 @@ const LICENSE_COOKIE_NAME = "lck";
 
 export async function check() {
   const c = await cookies();
-  return c.get(LICENSE_COOKIE_NAME) !== null;
+  const lck = c.get(LICENSE_COOKIE_NAME);
+  if (!lck) return false;
+
+  try {
+    const subs =
+      await sql`SELECT * FROM subscribers WHERE license = ${lck.value}`;
+    return subs.length > 0;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
 }
 
 export async function signin(
