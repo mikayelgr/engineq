@@ -101,20 +101,15 @@ ORDER BY sug.added_at ASC
   const countOfSuggestions = await getRemainingSuggestionsCount(lck);
   if (countOfSuggestions <= 10) {
     // In case there are less than 10 suggestions available up next, we are scheduling
-    // a task in the background to generate some additional music.
-    ch.sendToQueue(
-      "acura",
-      Buffer.from(
-        JSON.stringify({
-          license: request.cookies.get("lck")?.value,
-          prompt:
-            `I am the owner of a restaurant called "Martini Royale" at the ` +
-            `center of Yerevan, Armenia. It is a place where people can enjoy ` +
-            `a quiet meal under some jazzy, classical, and some smooth pop music. ` +
-            `Help me generate some stuff.`,
-        })
-      )
-    );
+    // 3 tasks in the background to generate some additional music for the user.
+    for (let i = 0; i < 4; i++) {
+      ch.sendToQueue(
+        "acura",
+        Buffer.from(
+          JSON.stringify({ license: request.cookies.get("lck")?.value })
+        )
+      );
+    }
   }
 
   return NextResponse.json(queue, { status: 200 });
