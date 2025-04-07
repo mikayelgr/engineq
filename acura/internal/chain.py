@@ -38,7 +38,7 @@ class GenerateSearchQueryNode(BaseNode[GraphState, GraphDeps]):
         result_retries=3,
         result_type=str,
         name="GenerateSearchQueryAgent",
-        model_settings={"temperature": 0.7},
+        model_settings={"temperature": 0.85, "top_p": 0.30},
         # The system prompts follow CodeSignal's MPF format for GenAI prompts.
         # Learn more here: https://codesignal.com/learn/paths/prompt-engineering-for-everyone?courseSlug=understanding-llms-and-basic-prompting-techniques&unitSlug=mastering-consistent-formatting-and-organization-for-effective-prompting
         system_prompt="""
