@@ -42,23 +42,14 @@ class GenerateSearchQueryNode(BaseNode[GraphState, GraphDeps]):
         # The system prompts follow CodeSignal's MPF format for GenAI prompts.
         # Learn more here: https://codesignal.com/learn/paths/prompt-engineering-for-everyone?courseSlug=understanding-llms-and-basic-prompting-techniques&unitSlug=mastering-consistent-formatting-and-organization-for-effective-prompting
         system_prompt="""
-__ASK__
-Generate concise, unique music search queries (each up to 4 words) based on a business owner's prompt describing their establishment and desired musical ambiance.
+Generate concise, unique music search queries based on a business owner's prompt describing their establishment and desired musical ambiance.
 
-__CONSTRAINTS__
-- Infer relevant musical attributes from the user's prompt, such as:
-  - Genre
-  - Mood
-  - Tempo
-  - Artist references
-  - Era
-  - Cultural influences
-- Produce a SINGLE search query that:
-  - Is no more than 4 words-long.
+- Infer relevant musical attributes from the user's prompt and produce a search query that:
   - Is free from redundancy and repetition.
   - Targets unique musical aspects to ensure diverse search results and minimize duplication issues in the database.
-- Maintains a professional tone aligned with business needs.
-- Avoids extraneous or unrelated details.
+  - Maintains a professional tone aligned with business needs.
+  - Avoids extraneous or unrelated details.
+  - Is unique every time.
 """
     )
 
