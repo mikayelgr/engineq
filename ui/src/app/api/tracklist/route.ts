@@ -62,18 +62,16 @@ export async function GET(request: NextRequest) {
     await sql`
 SELECT trk.*, sug.added_at, sug.id as suggestion_id 
 FROM playlists plist
-LEFT JOIN subscribers sub ON sub.id = plist.sid
-LEFT JOIN suggestions sug ON sug.pid = plist.id
-LEFT JOIN tracks      trk ON sug.tid = trk.id
-LEFT JOIN playback    plb ON plb.subscriber_id = sub.id
-WHERE plist.created_at = CURRENT_DATE AND sub.license = ${lck}
+JOIN subscribers sub ON sub.id = plist.sid AND sub.license = ${lck}
+JOIN suggestions sug ON sug.pid = plist.id
+JOIN tracks trk ON sug.tid = trk.id
+LEFT JOIN playback plb ON plb.subscriber_id = sub.id
+WHERE plist.created_at = CURRENT_DATE
   AND (
     plb.suggestion_id IS NULL
-    OR sug.added_at >= (
-      SELECT sug2.added_at
-      FROM suggestions sug2
-      LEFT JOIN playback plb2 ON plb2.subscriber_id = sub.id
-      WHERE sug2.pid = plist.id 
+    OR sug.id NOT IN (
+      SELECT suggestion_id FROM playback 
+      WHERE subscriber_id = sub.id AND suggestion_id IS NOT NULL
     )
   )
 ORDER BY sug.added_at ASC;
@@ -83,7 +81,7 @@ ORDER BY sug.added_at ASC;
   const countOfSuggestions = await getRemainingSuggestionsCount(lck);
   if (countOfSuggestions <= 10) {
     // In case there are less than 10 suggestions available up next, we are scheduling
-    // 3 tasks in the background to generate some additional music for the user.
+    // tasks in the background to generate some additional music for the user.
     for (let i = 0; i < 4; i++) {
       ch.sendToQueue(
         "acura",
