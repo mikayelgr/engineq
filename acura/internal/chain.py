@@ -174,7 +174,7 @@ class SearchAndVerifyYoutubeAndSaveNode(BaseNode[GraphState, GraphDeps]):
                         youtube_result['title'].lower()
                     )
 
-                    if youtube_result and (similarity > 0.68) and ("watch" in youtube_result["url"]):
+                    if youtube_result and (similarity > 0.75) and ("watch" in youtube_result["url"]):
                         embedding = await EmbeddingsService.create_track_embedding(
                             ctx.state.spotify_search_query,
                             track["name"],
