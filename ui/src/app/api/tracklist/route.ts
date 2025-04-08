@@ -32,20 +32,21 @@ async function getRemainingSuggestionsCount(lck: string) {
         SELECT added_at
         FROM suggestions
         WHERE id = ${lastSuggestionId}
+        LIMIT 1 -- Ensure only one row is returned
       )
       SELECT COUNT(*) as count
       FROM suggestions s
       WHERE s.pid = ${todayPid}
       AND s.added_at > (SELECT added_at FROM last_position)`;
 
-    return parseInt(result[0].count, 10);
+    return parseInt(result[0]?.count || "0", 10);
   } else {
     // If this is a new playlist or no previous suggestion exists, return all suggestions for the playlist
     const result = await sql`
       SELECT COUNT(*) as count 
       FROM suggestions 
       WHERE pid = ${todayPid}`;
-    return parseInt(result[0].count, 10);
+    return parseInt(result[0]?.count || "0", 10);
   }
 }
 
