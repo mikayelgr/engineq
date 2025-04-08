@@ -60,7 +60,15 @@ export async function GET(request: NextRequest) {
   const lck = request.cookies.get("lck")!.value;
   const queue = (
     await sql`
-SELECT trk.*, sug.added_at, sug.id as suggestion_id 
+SELECT
+  trk.id,
+  trk.title,
+  trk.artist,
+  trk.duration,
+  trk.image,
+  trk.uri,
+  sug.added_at,
+  sug.id as suggestion_id 
 FROM playlists plist
 JOIN subscribers sub ON sub.id = plist.sid AND sub.license = ${lck}
 JOIN suggestions sug ON sug.pid = plist.id
