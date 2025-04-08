@@ -7,7 +7,7 @@ import { Skeleton } from "@heroui/react";
 import ReactPlayer from "react-player";
 
 export default function Player() {
-  const { currentTrack, pause, play, isPlaying, next, isMuted } =
+  const { currentSuggestion: currentTrack, pause, play, isPlaying, next, isMuted } =
     useDashboardStore((s) => s);
 
   return !currentTrack ? (

@@ -2,6 +2,10 @@
 import { createStore } from "zustand/vanilla";
 import { devtools } from "zustand/middleware";
 
+export type Suggestion = Track & {
+  suggestion_id: number;
+};
+
 export type Track = {
   id: number;
   title: string;
@@ -13,11 +17,11 @@ export type Track = {
 };
 
 export type DashboardState = {
-  queue: Track[];
+  queue: Suggestion[];
   isMuted: boolean;
   isPlaying: boolean;
-  currentTrackId: number;
-  currentTrack: Track | null;
+  currentSuggestionId: number;
+  currentSuggestion: Suggestion | null;
   lastFetchTimestamp: number; // New field to track when we last fetched
 };
 
@@ -26,9 +30,9 @@ export type DashboardActions = {
   pause: () => void;
   next: () => void;
   toggleMuted: () => void;
-  setQueue: (tracks: Track[]) => void;
-  addToQueue: (tracks: Track[]) => void; // New method to properly add tracks
-  setCurrentTrackId: (id: number) => void;
+  setQueue: (suggestions: Suggestion[]) => void;
+  addToQueue: (suggestions: Suggestion[]) => void; // New method to properly add tracks
+  setCurrentSuggestionId: (id: number) => void;
   updateLastFetchTimestamp: () => void; // New method to update fetch timestamp
 };
 
@@ -38,8 +42,8 @@ export const defaultInitState: DashboardState = {
   queue: [],
   isMuted: false,
   isPlaying: false,
-  currentTrack: null,
-  currentTrackId: -1,
+  currentSuggestion: null,
+  currentSuggestionId: -1,
   lastFetchTimestamp: 0,
 };
 
@@ -58,9 +62,10 @@ export const createDashboardStore = (
           ),
         next: () =>
           set(
-            ({ queue, setCurrentTrackId }) => {
+            ({ queue, setCurrentSuggestionId }) => {
               queue.shift();
-              if (queue.length !== 0) setCurrentTrackId(queue[0].id);
+              if (queue.length !== 0)
+                setCurrentSuggestionId(queue[0].suggestion_id);
               return { queue, isPlaying: queue.length !== 0 };
             },
             undefined,
@@ -73,8 +78,8 @@ export const createDashboardStore = (
               if (s.queue.length === 0) {
                 return {
                   queue: tracks,
-                  currentTrackId: tracks[0]?.id ?? -1,
-                  currentTrack: tracks[0] ?? null,
+                  currentSuggestionId: tracks[0]?.id ?? -1,
+                  currentSuggestion: tracks[0] ?? null,
                   lastFetchTimestamp: Date.now(),
                 };
               }
@@ -83,11 +88,11 @@ export const createDashboardStore = (
               return {
                 queue: tracks,
                 // Don't change currentTrackId if already playing something
-                currentTrackId:
-                  s.currentTrackId >= 0
-                    ? s.currentTrackId
+                currentSuggestionId:
+                  s.currentSuggestionId >= 0
+                    ? s.currentSuggestionId
                     : (tracks[0]?.id ?? -1),
-                currentTrack: s.currentTrack ?? tracks[0] ?? null,
+                currentSuggestion: s.currentSuggestion ?? tracks[0] ?? null,
                 lastFetchTimestamp: Date.now(),
               };
             },
@@ -97,25 +102,28 @@ export const createDashboardStore = (
         addToQueue: (newTracks) =>
           set(
             (state) => {
-              // Deduplicate tracks based on track ID
-              const existingIds = new Set(state.queue.map((track) => track.id));
-              const filteredTracks = newTracks.filter(
-                (track) => !existingIds.has(track.id)
+              // Deduplicate tracks based on suggestion ID
+              const existingIds = new Set(
+                state.queue.map((s) => s.suggestion_id)
+              );
+              const filteredSuggestions = newTracks.filter(
+                (s) => !existingIds.has(s.suggestion_id)
               );
 
-              if (filteredTracks.length === 0) {
+              if (filteredSuggestions.length === 0) {
                 return {}; // No changes if no new tracks
               }
 
-              const updatedQueue = [...state.queue, ...filteredTracks];
+              const updatedQueue = [...state.queue, ...filteredSuggestions];
 
               return {
                 queue: updatedQueue,
-                currentTrackId:
-                  state.currentTrackId >= 0
-                    ? state.currentTrackId
-                    : (updatedQueue[0]?.id ?? -1),
-                currentTrack: state.currentTrack ?? updatedQueue[0] ?? null,
+                currentSuggestionId:
+                  state.currentSuggestionId >= 0
+                    ? state.currentSuggestionId
+                    : (updatedQueue[0]?.suggestion_id ?? -1),
+                currentSuggestion:
+                  state.currentSuggestion ?? updatedQueue[0] ?? null,
               };
             },
             undefined,
@@ -133,32 +141,37 @@ export const createDashboardStore = (
           set(() => ({ isPlaying: false }), undefined, "dashboard-store/pause"),
         play: () =>
           set(
-            ({ queue, setCurrentTrackId }) => {
-              if (queue.length !== 0) setCurrentTrackId(queue[0].id);
+            ({ queue, setCurrentSuggestionId }) => {
+              if (queue.length !== 0)
+                setCurrentSuggestionId(queue[0].suggestion_id);
               return { isPlaying: queue.length !== 0 };
             },
             undefined,
             "dashboard-store/play"
           ),
-        setCurrentTrackId: (tid) =>
+        setCurrentSuggestionId: (suggestionId) =>
           set(
-            ({ queue, currentTrackId }) => {
-              const currentTrackIndex = queue.findIndex(
-                (t) => t.id === currentTrackId
+            ({ queue, currentSuggestionId: currentTrackId }) => {
+              const currentSuggestionIndex = queue.findIndex(
+                (s) => s.suggestion_id === currentTrackId
               );
-              const newTrackIndex = queue.findIndex((t) => t.id === tid);
+              const newTrackIndex = queue.findIndex(
+                (s) => s.suggestion_id === suggestionId
+              );
               return {
                 queue:
                   // Skipping over the rest of the songs
-                  newTrackIndex > currentTrackIndex
+                  newTrackIndex > currentSuggestionIndex
                     ? queue.slice(newTrackIndex)
                     : queue,
-                currentTrackId: tid,
-                currentTrack: queue.find((t) => t.id === tid),
+                currentSuggestionId: suggestionId,
+                currentSuggestion: queue.find(
+                  (s) => s.suggestion_id === suggestionId
+                ),
               };
             },
             undefined,
-            "dashboard-store/setCurrentTrackId"
+            "dashboard-store/setCurrentSuggestionId"
           ),
       }),
       { name: "dashboard-store" }

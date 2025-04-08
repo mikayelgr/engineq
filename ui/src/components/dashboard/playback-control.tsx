@@ -11,7 +11,7 @@ export default function PlaybackControl() {
     play,
     next,
     isPlaying,
-    currentTrackId,
+    currentSuggestionId,
     queue,
     isMuted,
     toggleMuted,
@@ -19,12 +19,12 @@ export default function PlaybackControl() {
 
   useEffect(() => {
     async function _() {
-      if (currentTrackId > 0)
-        await fetch(`/api/update-last-played?tid=${currentTrackId}`);
+      if (currentSuggestionId)
+        await fetch(`/api/update-last-played?sid=${currentSuggestionId}`);
     }
 
     _();
-  }, [currentTrackId]);
+  }, [currentSuggestionId]);
 
   return (
     <ButtonGroup>

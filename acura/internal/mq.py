@@ -54,11 +54,16 @@ async def __process_message(msg: AbstractIncomingMessage) -> None:
                     "No subscriber found with the provided license key.")
 
             try:
-                await curate(subscriber.id)
+                n_added_items = await curate(subscriber.id)
             except Exception as e:
-                raise RuntimeError(f"Error during track generation: {e}")
+                raise RuntimeError(f"Error during curation: {e}")
 
-            await msg.ack()  # Acknowledge the message after successful processing
+            if n_added_items > 0:
+                await msg.ack()
+            else:
+                # If no items were added, we can choose to reject the message and
+                # requeue it for later processing.
+                await msg.reject()
 
     except Exception as e:
         __logger.error("Error processing message: %s", e)
@@ -75,8 +80,7 @@ def __extract_license_key(msg: AbstractIncomingMessage) -> str | None:
     """
 
     try:
-        data: dict = json.loads(msg.body)
-        return data.get("license")
+        return json.loads(msg.body)["license"]
     except json.JSONDecodeError:
         __logger.error("Failed to decode message body as JSON.")
         return None

@@ -4,7 +4,7 @@ import { useDashboardStore } from "@/src/providers/dashboard/dashboard-store-pro
 import { title } from "../primitives";
 
 export default function CurrentPlaybackInfo() {
-  const { currentTrack } = useDashboardStore((s) => s);
+  const { currentSuggestion: currentTrack } = useDashboardStore((s) => s);
 
   return (
     <div className="w-full">

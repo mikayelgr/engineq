@@ -7,14 +7,18 @@ import { ScrollShadow, Spinner } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 
 export default function PlaybackQueue() {
-  const { queue, currentTrackId, addToQueue } = useDashboardStore((s) => s);
+  const {
+    queue,
+    currentSuggestionId: currentTrackId,
+    addToQueue,
+  } = useDashboardStore((s) => s);
 
   const [isFetching, setIsFetching] = useState(false);
   const initialLoadComplete = useRef(false);
   const lastQueueLength = useRef(0);
   const fetchingRef = useRef(false);
 
-  async function loadTracks(ctid: string | null = null) {
+  async function loadTracks(suggestionId: string | null = null) {
     // Use ref to track fetching state to prevent race conditions
     if (fetchingRef.current) return;
 
@@ -23,7 +27,7 @@ export default function PlaybackQueue() {
 
     try {
       const request = await fetch(
-        `/api/tracklist?` + (ctid ? `tid=${ctid}` : "")
+        `/api/tracklist?` + (suggestionId ? `sid=${suggestionId}` : "")
       );
       const latest = await request.json();
 
@@ -32,7 +36,7 @@ export default function PlaybackQueue() {
         queue.length +
         latest.filter((track: any) => {
           // Quick duplicate check for length estimation
-          return !queue.some((q) => q.id === track.id);
+          return !queue.some((q) => q.suggestion_id === track.suggestionId);
         }).length;
 
       // Use the addToQueue method which handles deduplication internally
@@ -90,7 +94,7 @@ export default function PlaybackQueue() {
             {queue && queue.length > 0 ? (
               <div className="w-full flex flex-col gap-2">
                 {queue.map(
-                  (t) => t && <PlaybackQueueTrack key={t.id} {...t} />
+                  (s) => s && <PlaybackQueueTrack key={s.suggestion_id} {...s} />
                 )}
               </div>
             ) : (

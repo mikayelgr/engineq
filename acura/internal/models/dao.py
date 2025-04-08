@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 from internal.models.codegen import Subscribers, Prompts, Playlists, Tracks, Suggestions
 from internal.models.sql import SQLDatabase
-from sqlalchemy import select, insert, func, literal_column, update
+from sqlalchemy import select, insert, func, literal_column, update, asc, text
 import logging
 from sqlalchemy.exc import IntegrityError
 from asyncpg.exceptions import UniqueViolationError
+from internal.services.embeddings import EmbeddingsService
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,15 @@ class PlaylistsDAO:
 @dataclass
 class TracksDAO:
     @classmethod
+    async def get_tracks_by_ids(cls, track_ids: list[int]):
+        """
+        Retrieve tracks from the database based on a list of track IDs.
+        """
+        async with SQLDatabase.connection() as pg:
+            r = await pg.execute(select(Tracks.id).where(Tracks.id.in_(track_ids)))
+            return r.all()
+
+    @classmethod
     async def update_track_embedding(cls, track_id: int, embedding: list[float]):
         """
         Update the embedding for a given track ID.
@@ -89,6 +99,35 @@ class TracksDAO:
             )
 
             return r.rowcount
+
+    @classmethod
+    async def get_similar_track_ids(cls, search_embedding: list[float], sim_threshold: float = 0.5):
+        """
+        Retrieve tracks with a cosine distance less than 0.5 from the given embedding.
+        """
+
+        async with SQLDatabase.connection() as pg:
+            r = await pg.execute(
+                select(Tracks.id)
+                .where(Tracks.search_embedding.cosine_distance(search_embedding) < sim_threshold)
+                .order_by(asc(Tracks.search_embedding.cosine_distance(search_embedding))))
+
+            return r.all()
+
+    @classmethod
+    async def n_similar_tracks_count(cls, search_embedding: list[float]):
+        """
+        Count the number of tracks with a cosine distance less than 0.5 from the given embedding.
+        """
+
+        async with SQLDatabase.connection() as pg:
+            r = await pg.execute(
+                select(func.count(Tracks.id))
+                .where(Tracks.search_embedding.cosine_distance(search_embedding) < 0.5)
+                .order_by(asc(Tracks.search_embedding.cosine_distance(search_embedding)))
+            )
+
+            return r.scalar_one_or_none()
 
     @classmethod
     async def create_track(cls, track_data: dict):
@@ -120,6 +159,21 @@ class TracksDAO:
 @dataclass
 class SuggestionsDAO:
     @classmethod
+    async def get_past_n_hours_suggestions(cls, playlist_id: int, hours: int = 1):
+        """
+        Retrieve suggestions from the past specified hours for a given playlist.
+        """
+
+        async with SQLDatabase.connection() as pg:
+            r = await pg.execute(
+                select(Suggestions.pid, Suggestions.tid, Suggestions.added_at)
+                .where(Suggestions.pid == playlist_id)
+                .where(Suggestions.added_at > func.now() - text(f"INTERVAL '{hours} hours'"))
+            )
+
+            return r.all()
+
+    @classmethod
     async def add_track_to_suggestions(cls, playlist_id: int, track_id: int):
         """
         Insert a record into the Suggestions table linking the playlist and track.
@@ -131,4 +185,5 @@ class SuggestionsDAO:
                 .values(pid=playlist_id, tid=track_id)
                 .returning(literal_column("*"))
             )
+
             return r.one_or_none()

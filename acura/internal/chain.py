@@ -6,9 +6,9 @@ from internal.services.brave_search import BraveSearchService
 from internal.agents import decide_llm
 from pydantic_graph import BaseNode, GraphRunContext, End, Graph
 import Levenshtein
-from internal.models.dao import PromptsDAO, PlaylistsDAO, TracksDAO
+from internal.models.dao import PromptsDAO, PlaylistsDAO, TracksDAO, SuggestionsDAO
 from typing import Union
-from internal.services.track_embeddings import TrackEmbeddingsService
+from internal.services.embeddings import EmbeddingsService
 
 # Maximum number of retries for executing the workflow
 MAX_RETRIES = 3
@@ -53,23 +53,21 @@ Generate concise, unique music search queries based on a business owner's prompt
 """
     )
 
-    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> Union["SearchSpotifyPlaylistsNode", End]:
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> "SourceSelectionRouterNode":
         if ctx.state.error_info:
             logging.getLogger(__name__).error(
                 f"Error in previous step: {ctx.state.error_info}")
         if ctx.state.retry_count >= MAX_RETRIES:
-            return End()
+            raise RuntimeError(f"Maximum retries ({MAX_RETRIES}) exceeded for query: `{ctx.state.spotify_search_query}`")
 
         try:
             prompts = await PromptsDAO.get_subscriber_prompts_by_sid(ctx.deps.sid)
             prompt = prompts[0].prompt
             flow = await self.query_gen_agent.run(prompt)
             ctx.state.spotify_search_query = flow.data
-            return SearchSpotifyPlaylistsNode()
+            return SourceSelectionRouterNode()
         except Exception as e:
-            logging.getLogger(__name__).error(
-                f"Error during query generation: {e}")
-            return End()
+            raise RuntimeError(f"Error during query generation: {e}")
 
 
 @dataclass
@@ -88,9 +86,7 @@ class SearchSpotifyPlaylistsNode(BaseNode[GraphState, GraphDeps]):
 
             return MatchQueryWithSpotifyPlaylist(playlists)
         except Exception as e:
-            logging.getLogger(__name__).error(
-                f"Error retrieving Spotify playlists: {e}")
-            return End()
+            raise RuntimeError(f"Error retrieving Spotify playlists: {e}")
 
 
 @dataclass
@@ -119,7 +115,7 @@ as the title and the description of the playlist.
 """
     )
 
-    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> Union["SearchYoutubeNode", "GenerateSearchQueryNode"]:
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> Union["SearchAndVerifyYoutubeAndSaveNode", "GenerateSearchQueryNode"]:
         matched_playlist = None
 
         for playlist in self.found_playlists:
@@ -142,12 +138,12 @@ This is their search query: {ctx.state.spotify_search_query}
 
             except Exception as e:
                 logging.getLogger(__name__).error(
-                    f"Error filtering playlist '{playlist['name']}': {e}")
+                    f"Error filtering playlist '{playlist['name']}']: {e}")
 
         if matched_playlist:
             pid = matched_playlist["id"]
             tracks = await SpotifyService.get_playlist_tracks(pid)
-            return SearchYoutubeNode(tracks=filter(lambda track: not track["explicit"], tracks))
+            return SearchAndVerifyYoutubeAndSaveNode(tracks=filter(lambda track: not track["explicit"], tracks))
         else:
             ctx.state.retry_count += 1
             ctx.state.error_info = f"No matching playlists found for query: {ctx.state.spotify_search_query}"
@@ -155,126 +151,176 @@ This is their search query: {ctx.state.spotify_search_query}
 
 
 @dataclass
-class SearchYoutubeNode(BaseNode[GraphState, GraphDeps]):
+class SearchAndVerifyYoutubeAndSaveNode(BaseNode[GraphState, GraphDeps]):
     """
-    Searches YouTube for videos of the corresponding tracks.
-    """
-    tracks: list[dict]
-
-    async def run(self, _: GraphRunContext[GraphState, GraphDeps]) -> 'VerifyAndSaveSuggestionsNode':
-        tracks = []
-        for track in self.tracks:
-            brave_search_query = f"{track['name']} {track['artists'][0]['name']}"
-            try:
-                results: list[dict] = await BraveSearchService.search_youtube_for_videos(brave_search_query, 2)
-                if not results:
-                    logging.getLogger(__name__).warning(
-                        f"No YouTube results found for track '{track['name']}'")
-                    continue
-
-                # TODO: Implement duration analysis for tracks, so that the playlist
-                # doesn't get cluttered with tracks which are either shorts, etc.
-                # for r in results:
-                #     if ("video" not in r) or ("duration" not in r["video"]):
-                #         # Skip results which don't have metadata about the video
-                #         continue
-                #
-                #     video_duration_ms = self.parse_time_to_milliseconds(
-                #         r["video"]["duration"])
-                #     if video_duration_ms < 60 * 1000:
-                #         # Skip videos which are shorter than 1 minute
-                #         continue
-                #     if video_duration_ms > track["duration_ms"] * 1.5:
-                #         # Skip videos which are longer than 1.5 times the track duration
-                #         continue
-                #     correct_youtube_results.append(r)
-                # if not correct_youtube_results:
-                #     logging.getLogger(__name__).warning(
-                #         f"No valid YouTube results found for track '{track['name']}'")
-                #     continue
-
-                # This data will be later used to verify if the video is a music video
-                # when searching for the track on YouTube.
-                tracks.append(
-                    {"spotify_track": track, "search_results": results})
-            except Exception as e:
-                logging.getLogger(__name__).error(
-                    f"Error searching YouTube for track '{track['name']}': {e}")
-
-                # It is more beneficial to end early at this stage, because Brave's API
-                # is much more expensive, so it would not make sense to continue searching
-                # in case an error occurs and waste credits for other APIs.
-                return End()
-
-        return VerifyAndSaveSuggestionsNode(tracks)
-
-
-@dataclass
-class VerifyAndSaveSuggestionsNode(BaseNode[GraphState, GraphDeps]):
-    """
-    Verifies YouTube results to ensure they are music videos.
+    Searches YouTube for videos of the corresponding tracks and verifies them to ensure they are music videos.
     """
     tracks: list[dict]
 
     async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> End:
         playlist = await PlaylistsDAO.create_or_get_playlist(ctx.deps.sid)
-        for i in range(len(self.tracks)):
-            spotify_track: dict = self.tracks[i]["spotify_track"]
-            youtube_results: list[dict] = self.tracks[i]["search_results"]
-            for youtube_result in youtube_results:
-                similarity = Levenshtein.ratio(
-                    f"{spotify_track['name'].lower()} - {spotify_track['artists'][0]['name'].lower()}",
-                    youtube_result['title'].lower()
-                )
+        n_added_tracks = 0
 
-                # Here, we are using Levenshtein distance to check if the title of the
-                # YouTube video is similar to the track name. If the similarity is above
-                # a certain threshold (0.65), we consider it a match.
-                #
-                # This way, we don't need to trigger another LLM agent to check if the
-                # video is a music video. We can assume that if the title is similar to
-                # the track name, it is likely a music video.
-                if youtube_result and similarity > 0.68:
-                    embedding = await TrackEmbeddingsService.create_embedding(
-                        ctx.state.spotify_search_query,
-                        spotify_track["name"],
-                        spotify_track["artists"][0]["name"],
+        for track in self.tracks:
+            brave_search_query = f"{track['name']} {track['artists'][0]['name']}"
+            try:
+                results: list[dict] = await BraveSearchService.search_youtube_for_videos(brave_search_query)
+                if not results:
+                    continue
+
+                for youtube_result in results:
+                    similarity = Levenshtein.ratio(
+                        f"{track['name'].lower()} - {track['artists'][0]['name'].lower()}",
+                        youtube_result['title'].lower()
                     )
 
-                    verified_track = {
-                        "title": spotify_track["name"],
-                        "uri": youtube_result["url"],
-                        "artist": spotify_track["artists"][0]["name"],
-                        "duration": spotify_track["duration_ms"],
-                        "explicit": spotify_track["explicit"],
-                        "image": spotify_track.get("album", {}).get("images", [{}])[0].get("url", None),
-                    }
+                    if youtube_result and (similarity > 0.68) and ("watch" in youtube_result["url"]):
+                        embedding = await EmbeddingsService.create_track_embedding(
+                            ctx.state.spotify_search_query,
+                            track["name"],
+                            track["artists"][0]["name"],
+                        )
 
-                    tid = await PlaylistsDAO.add_track_to_playlist(playlist.id, verified_track)
-                    await TracksDAO.update_track_embedding(tid, embedding)
-                    break
+                        verified_track = {
+                            "title": track["name"],
+                            "uri": youtube_result["url"],
+                            "artist": track["artists"][0]["name"],
+                            "duration": track["duration_ms"],
+                            "explicit": track["explicit"],
+                            "image": track.get("album", {}).get("images", [{}])[0].get("url", None),
+                        }
 
-        return End(None)
+                        # Create the track in the database
+                        tid = await PlaylistsDAO.add_track_to_playlist(playlist.id, verified_track)
+                        # Add the track to suggestions
+                        await TracksDAO.update_track_embedding(tid, embedding)
+                        n_added_tracks += 1
+                        break
+
+            except Exception as e:
+                raise RuntimeError(f"Error searching and verifying YouTube for track '{track['name']}']: {e}")
+
+        return End(n_added_tracks)
+
+
+@dataclass
+class SourceSelectionRouterNode(BaseNode[GraphState, GraphDeps]):
+    """
+    Decides whether to use existing data from the database or curate new data. This
+    is one of the most important nodes in the system, since it decides whether to
+    curate new data or use existing data, thus saving time and resources. As of
+    right now, it is based on the date of last internet curation of a certain
+    genre.
+
+    The selection process depends on the following information:
+    - The search query
+        - The week of the last generation
+        - The number of tracks curated for a specific genre
+    """
+
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> Union["ReuseExistingDataNode", SearchSpotifyPlaylistsNode]:
+        """
+        Executes the logic to determine whether to reuse existing data or search for new Spotify playlists.
+
+        Args:
+            ctx (GraphRunContext[GraphState, GraphDeps]): The context containing the state and dependencies
+            required for the execution.
+
+        Returns:
+            Union["ReuseExistingDataNode", SearchSpotifyPlaylistsNode]:
+            - `ReuseExistingDataNode` if there are sufficient curations to reuse existing data.
+            - `SearchSpotifyPlaylistsNode` if new data needs to be curated.
+
+        Workflow:
+            1. Creates a search query embedding using the Spotify search query from the context state.
+            2. Retrieves similar track IDs based on the generated embedding.
+            3. Fetches suggestions from the past hour using the provided dependency ID.
+            4. Filters the past hour's suggestions to include only those that match the similar track IDs.
+            5. Calculates the ratio of filtered suggestions to the total similar tracks.
+            6. Determines whether to reuse existing data or curate new data based on the number of similar tracks
+               and the calculated ratio.
+
+        Notes:
+            - The line `similar_track_ids = {t.tid for t in all_similar_tracks_cos}` creates a set of track IDs
+              from the list of similar tracks for faster lookup during filtering.
+        """
+
+        search_embedding = await EmbeddingsService.create_search_query_embedding(ctx.state.spotify_search_query)
+        all_similar_tracks_cos = await TracksDAO.get_similar_track_ids(search_embedding)
+        past_1_hour_suggestions = await SuggestionsDAO.get_past_n_hours_suggestions(ctx.deps.sid)
+        similar_track_ids = {t.id for t in all_similar_tracks_cos}
+        suggestions_from_past_hour = [s for s in past_1_hour_suggestions if s.tid in similar_track_ids]
+        ratio = len(suggestions_from_past_hour) / len(all_similar_tracks_cos) if all_similar_tracks_cos else 0
+        if (len(all_similar_tracks_cos) < 100) or (ratio > 0.5):
+            return SearchSpotifyPlaylistsNode()
+        return ReuseExistingDataNode(search_embedding=search_embedding)
+
+
+@dataclass
+class ReuseExistingDataNode(BaseNode[GraphState, GraphDeps]):
+    search_embedding: list[float]
+
+    """
+    Reuses existing data from the database. This is one of the most important
+    nodes in the system, since it decides whether to curate new data or use existing
+    data, thus saving time and resources.
+    """
+
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> End:
+        """
+        This function must use the `search_embedding` class variable. The steps are
+        as follows:
+        1. (similar_tracks) Get track IDs from the database that are most similar to `search_embedding`.
+        2. Get the playlist ID from the database.
+        3. Get the suggestions from the past hour.
+        4. Filter the similar_tracks to make sure that the tracks from past hour are not included in the new suggestions.
+        """
+
+        # Step 1: Get track IDs most similar to `search_embedding`
+        similar_tracks = await TracksDAO.get_similar_track_ids(self.search_embedding)
+        # Step 2: Get the playlist ID from the database
+        playlist = await PlaylistsDAO.create_or_get_playlist(ctx.deps.sid)
+        # Step 3: Get the suggestions from the past hour
+        past_hour_suggestions = await SuggestionsDAO.get_past_n_hours_suggestions(ctx.deps.sid)
+        # Step 4: Filter similar_tracks to exclude tracks from past hour suggestions
+        past_hour_track_ids = {suggestion.tid for suggestion in past_hour_suggestions}
+        filtered_tracks = [track for track in similar_tracks if track.id not in past_hour_track_ids]
+
+        # Add filtered tracks to the playlist
+        n_added_tracks = 0
+        for track in filtered_tracks:
+            try:
+                await SuggestionsDAO.add_track_to_suggestions(playlist.id, track.id)
+                n_added_tracks += 1
+            except Exception as e:
+                logging.getLogger(__name__).error(f"Error adding track '{track.title}' to playlist: {e}")
+
+        return End(n_added_tracks)
 
 
 @dataclass
 class MusicDiscoveryPipeline:
-    """
-    Orchestrates the music discovery process.
-    """
     graph = Graph(
-        nodes=(GenerateSearchQueryNode, SearchSpotifyPlaylistsNode,
-               MatchQueryWithSpotifyPlaylist, SearchYoutubeNode, VerifyAndSaveSuggestionsNode),
+        nodes=(
+            GenerateSearchQueryNode,
+            SourceSelectionRouterNode,
+            ReuseExistingDataNode,
+            SearchSpotifyPlaylistsNode,
+            MatchQueryWithSpotifyPlaylist,
+            SearchAndVerifyYoutubeAndSaveNode
+        ),
         name="Music Discovery Pipeline",
-        run_end_type=None
+        run_end_type=int
     )
 
     async def run(self, deps: GraphDeps):
-        await self.graph.run(
+        flow = await self.graph.run(
             GenerateSearchQueryNode(),
-            state=GraphState(retry_count=0),
+            state=GraphState(),
             deps=deps,
         )
+
+        return flow.output
 
 
 async def curate(sid: int):
@@ -282,7 +328,4 @@ async def curate(sid: int):
     Curates a playlist for a given subscriber ID.
     """
 
-    try:
-        await MusicDiscoveryPipeline().run(deps=GraphDeps(sid))
-    except Exception as e:
-        raise Exception(f"Error during playlist generation: {e}")
+    return await MusicDiscoveryPipeline().run(deps=GraphDeps(sid))

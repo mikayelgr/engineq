@@ -1,9 +1,9 @@
 import { useDashboardStore } from "@/src/providers/dashboard/dashboard-store-provider";
-import { Track } from "@/src/stores/dashboard/dashboard-store";
+import { Suggestion } from "@/src/stores/dashboard/dashboard-store";
 import { Card, CardHeader, Image, Skeleton } from "@heroui/react";
 import clsx from "clsx";
 
-interface PlaybackQueueTrackProps extends Track {
+interface PlaybackQueueTrackProps extends Suggestion {
   asSkeleton?: boolean;
 }
 
@@ -11,18 +11,21 @@ const truncateString = (string = "", maxLength = 20) =>
   string.length > maxLength ? `${string.substring(0, maxLength)}…` : string;
 
 export default function PlaybackQueueTrack(props: PlaybackQueueTrackProps) {
-  const { currentTrackId, setCurrentTrackId } = useDashboardStore((s) => s);
+  const {
+    currentSuggestionId: currentTrackId,
+    setCurrentSuggestionId: setCurrentTrackId,
+  } = useDashboardStore((s) => s);
 
   return (
     <Card
       {...(props.asSkeleton && { as: Skeleton })}
       className={clsx(
         "transition-all duration-200",
-        currentTrackId === props.id &&
+        currentTrackId === props.suggestion_id &&
           "shadow-lg bg-primary/20 ring-2 ring-primary/20"
       )}
       isPressable
-      onPress={() => setCurrentTrackId(props.id)}
+      onPress={() => setCurrentTrackId(props.suggestion_id)}
     >
       <CardHeader className="gap-2 w-full">
         <Image

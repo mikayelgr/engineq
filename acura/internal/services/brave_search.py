@@ -2,6 +2,9 @@ import httpx
 import asyncio
 from dataclasses import dataclass
 from internal.conf import Config
+import logging
+
+logging.getLogger("httpx").setLevel(logging.CRITICAL + 1)
 
 
 @dataclass
@@ -40,7 +43,7 @@ class BraveSearchService:
             "Max retries exceeded while trying to perform the request.")
 
     @classmethod
-    async def search_youtube_for_videos(self, query: str, num_results: int = 2) -> list[dict]:
+    async def search_youtube_for_videos(self, query: str, num_results: int = 10) -> list[dict]:
         query = "site:youtube.com" + ' ' + query
         params = {
             "q": query,
