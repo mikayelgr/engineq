@@ -56,19 +56,7 @@ export async function GET(request: NextRequest) {
     await ch.assertQueue("acura");
   }
 
-  const lck = request.cookies.get("lck")!.value; // we are guaranteed to have this
-  const tid = Number(request.nextUrl.searchParams.get("tid")) || -1;
-  if (!tid) {
-    return NextResponse.json(
-      {
-        error:
-          "Current track id (`current_tid`) and playlist id (`pid`) " +
-          "must be provided as search params.",
-      },
-      { status: 400 }
-    );
-  }
-
+  const lck = request.cookies.get("lck")!.value;
   const queue = (
     await sql`
 SELECT trk.*, sug.added_at, sug.id as suggestion_id 

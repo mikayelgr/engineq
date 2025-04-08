@@ -3,7 +3,7 @@ import { createStore } from "zustand/vanilla";
 import { devtools } from "zustand/middleware";
 
 export type Suggestion = Track & {
-  suggestion_id: number;
+  suggestion_id: string;
 };
 
 export type Track = {
@@ -20,7 +20,7 @@ export type DashboardState = {
   queue: Suggestion[];
   isMuted: boolean;
   isPlaying: boolean;
-  currentSuggestionId: number;
+  currentSuggestionId: string | null;
   currentSuggestion: Suggestion | null;
   lastFetchTimestamp: number; // New field to track when we last fetched
 };
@@ -32,7 +32,7 @@ export type DashboardActions = {
   toggleMuted: () => void;
   setQueue: (suggestions: Suggestion[]) => void;
   addToQueue: (suggestions: Suggestion[]) => void; // New method to properly add tracks
-  setCurrentSuggestionId: (id: number) => void;
+  setCurrentSuggestionId: (id: string) => void;
   updateLastFetchTimestamp: () => void; // New method to update fetch timestamp
 };
 
@@ -43,7 +43,7 @@ export const defaultInitState: DashboardState = {
   isMuted: false,
   isPlaying: false,
   currentSuggestion: null,
-  currentSuggestionId: -1,
+  currentSuggestionId: null,
   lastFetchTimestamp: 0,
 };
 
@@ -78,7 +78,7 @@ export const createDashboardStore = (
               if (s.queue.length === 0) {
                 return {
                   queue: tracks,
-                  currentSuggestionId: tracks[0]?.id ?? -1,
+                  currentSuggestionId: tracks[0]?.suggestion_id ?? null,
                   currentSuggestion: tracks[0] ?? null,
                   lastFetchTimestamp: Date.now(),
                 };
@@ -89,9 +89,9 @@ export const createDashboardStore = (
                 queue: tracks,
                 // Don't change currentTrackId if already playing something
                 currentSuggestionId:
-                  s.currentSuggestionId >= 0
+                  s.currentSuggestionId !== null
                     ? s.currentSuggestionId
-                    : (tracks[0]?.id ?? -1),
+                    : (tracks[0]?.suggestion_id ?? null),
                 currentSuggestion: s.currentSuggestion ?? tracks[0] ?? null,
                 lastFetchTimestamp: Date.now(),
               };
@@ -119,7 +119,7 @@ export const createDashboardStore = (
               return {
                 queue: updatedQueue,
                 currentSuggestionId:
-                  state.currentSuggestionId >= 0
+                  state.currentSuggestionId !== null
                     ? state.currentSuggestionId
                     : (updatedQueue[0]?.suggestion_id ?? -1),
                 currentSuggestion:
