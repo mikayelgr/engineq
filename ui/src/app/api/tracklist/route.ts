@@ -88,16 +88,12 @@ ORDER BY sug.added_at ASC;
 
   const countOfSuggestions = await getRemainingSuggestionsCount(lck);
   if (countOfSuggestions <= 10) {
-    // In case there are less than 10 suggestions available up next, we are scheduling
-    // tasks in the background to generate some additional music for the user.
-    for (let i = 0; i < 4; i++) {
-      ch.sendToQueue(
-        "acura",
-        Buffer.from(
-          JSON.stringify({ license: request.cookies.get("lck")?.value })
-        )
-      );
-    }
+    ch.sendToQueue(
+      "acura",
+      Buffer.from(
+        JSON.stringify({ license: request.cookies.get("lck")?.value })
+      )
+    );
   }
 
   return NextResponse.json(queue, { status: 200 });
