@@ -64,7 +64,7 @@ export default function PlaybackQueue() {
     if (
       initialLoadComplete.current &&
       queue.length <= 10 &&
-      currentTrackId >= 0 &&
+      currentTrackId !== null &&
       !fetchingRef.current &&
       queue.length !== lastQueueLength.current
     ) {
@@ -94,7 +94,8 @@ export default function PlaybackQueue() {
             {queue && queue.length > 0 ? (
               <div className="w-full flex flex-col gap-2">
                 {queue.map(
-                  (s) => s && <PlaybackQueueTrack key={s.suggestion_id} {...s} />
+                  (s) =>
+                    s && <PlaybackQueueTrack key={s.suggestion_id} {...s} />
                 )}
               </div>
             ) : (
