@@ -2,7 +2,7 @@
   "name": "migrator",
   "private": true,
   "scripts": {
-    "dbmate": "dbmate -e POSTGRES_URL -d ../migrations"
+    "dbmate": "dbmate -d ../migrations"
   },
   "devDependencies": {
     "dbmate": "^2.26.0"
