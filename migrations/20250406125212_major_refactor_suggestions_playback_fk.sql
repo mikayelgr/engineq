@@ -61,6 +61,8 @@ ALTER TABLE playback ADD COLUMN last_tid INTEGER;
 
 -- 6. Populate last_pid and last_tid from suggestion_id
 -- This relies on suggestions.id, suggestions.pid, and suggestions.tid still being available.
+-- Ensure that the suggestions table has not been altered and that the id, pid, and tid columns are intact.
+-- The following UPDATE statement assumes that each playback.suggestion_id corresponds to a valid suggestions.id.
 UPDATE playback p
 SET last_pid = s.pid, last_tid = s.tid
 FROM suggestions s
