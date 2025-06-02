@@ -24,19 +24,17 @@ jobs:
           python-version: "3.11" # Adjust this to match your Python version
 
       # Install Poetry
-      - name: Install Poetry
-        run: |
-          python -m pip install --upgrade pip
-          pip install poetry
+      - name: Install UV
+        run: pip install uv
 
       # Install dependencies using Poetry
       - name: Install dependencies
         run: |
           cd acura
-          poetry install
+          uv sync
 
       # Run flake8
       - name: Run flake8
         run: |
           cd acura
-          poetry run flake8 .
+          uv run flake8 .
