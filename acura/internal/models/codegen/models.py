@@ -1,7 +1,7 @@
 from typing import Any, List, Optional
 
 from pgvector.sqlalchemy.vector import VECTOR
-from sqlalchemy import Boolean, Date, DateTime, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, Text, UniqueConstraint, Uuid, text
+from sqlalchemy import ARRAY, Boolean, Column, Date, DateTime, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, Table, Text, UniqueConstraint, Uuid, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 import datetime
 import uuid
@@ -16,7 +16,7 @@ class SchemaMigrations(Base):
         PrimaryKeyConstraint('version', name='schema_migrations_pkey'),
     )
 
-    version: Mapped[str] = mapped_column(String(128), primary_key=True)
+    version: Mapped[str] = mapped_column(String, primary_key=True)
 
 
 class Subscribers(Base):
@@ -28,7 +28,9 @@ class Subscribers(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     license: Mapped[uuid.UUID] = mapped_column(Uuid, server_default=text('gen_random_uuid()'))
     created_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True), server_default=text('now()'))
+    note: Mapped[Optional[str]] = mapped_column(Text)
 
+    suggestion: Mapped[List['Suggestions']] = relationship('Suggestions', secondary='playback', back_populates='subscriber')
     playlists: Mapped[List['Playlists']] = relationship('Playlists', back_populates='subscribers')
     prompts: Mapped[List['Prompts']] = relationship('Prompts', back_populates='subscribers')
 
@@ -49,6 +51,7 @@ class Tracks(Base):
     explicit: Mapped[Optional[bool]] = mapped_column(Boolean, server_default=text('false'))
     image: Mapped[Optional[str]] = mapped_column(Text)
     search_embedding: Mapped[Optional[Any]] = mapped_column(VECTOR(1024))
+    genres: Mapped[Optional[list]] = mapped_column(ARRAY(Text()))
 
     suggestions: Mapped[List['Suggestions']] = relationship('Suggestions', back_populates='tracks')
 
@@ -72,7 +75,7 @@ class Playlists(Base):
 class Prompts(Base):
     __tablename__ = 'prompts'
     __table_args__ = (
-        ForeignKeyConstraint(['sid'], ['subscribers.id'], name='prompts_sid_fkey'),
+        ForeignKeyConstraint(['sid'], ['subscribers.id'], ondelete='CASCADE', name='prompts_sid_fkey'),
         PrimaryKeyConstraint('id', name='prompts_pkey')
     )
 
@@ -89,8 +92,7 @@ class Suggestions(Base):
     __table_args__ = (
         ForeignKeyConstraint(['pid'], ['playlists.id'], ondelete='CASCADE', name='suggestions_pid_fkey'),
         ForeignKeyConstraint(['tid'], ['tracks.id'], ondelete='CASCADE', name='suggestions_tid_fkey'),
-        PrimaryKeyConstraint('id', name='suggestions_pkey'),
-        UniqueConstraint('pid', 'tid', name='suggestions_pid_tid_unique')
+        PrimaryKeyConstraint('id', name='suggestions_pkey')
     )
 
     pid: Mapped[int] = mapped_column(Integer)
@@ -98,21 +100,16 @@ class Suggestions(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('gen_random_uuid()'))
     added_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True), server_default=text('now()'))
 
+    subscriber: Mapped[List['Subscribers']] = relationship('Subscribers', secondary='playback', back_populates='suggestion')
     playlists: Mapped['Playlists'] = relationship('Playlists', back_populates='suggestions')
     tracks: Mapped['Tracks'] = relationship('Tracks', back_populates='suggestions')
-    playback: Mapped[List['Playback']] = relationship('Playback', back_populates='suggestion')
 
 
-class Playback(Subscribers):
-    __tablename__ = 'playback'
-    __table_args__ = (
-        ForeignKeyConstraint(['subscriber_id'], ['subscribers.id'], ondelete='CASCADE', name='playback_sid_fkey'),
-        ForeignKeyConstraint(['suggestion_id'], ['suggestions.id'], ondelete='CASCADE', name='playback_suggestion_id_fkey'),
-        PrimaryKeyConstraint('subscriber_id', name='playback_pkey')
-    )
-
-    subscriber_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    suggestion_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
-    last_suggestion_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
-
-    suggestion: Mapped[Optional['Suggestions']] = relationship('Suggestions', back_populates='playback')
+t_playback = Table(
+    'playback', Base.metadata,
+    Column('subscriber_id', Integer, primary_key=True),
+    Column('suggestion_id', Uuid),
+    ForeignKeyConstraint(['subscriber_id'], ['subscribers.id'], ondelete='CASCADE', name='playback_sid_fkey'),
+    ForeignKeyConstraint(['suggestion_id'], ['suggestions.id'], ondelete='CASCADE', name='playback_suggestion_id_fkey'),
+    PrimaryKeyConstraint('subscriber_id', name='playback_pkey')
+)

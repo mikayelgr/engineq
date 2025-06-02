@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SubscribersDAO:
     @classmethod
-    async def get_subscriber_by_license(cls, license: str) -> Subscribers | None:
+    async def get_subscriber_by_license(cls, license: str):
         """
         Retrieve the subscriber from the database based on the provided license key.
         """

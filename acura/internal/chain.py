@@ -76,15 +76,15 @@ class SearchSpotifyPlaylistsNode(BaseNode[GraphState, GraphDeps]):
     Retrieves Spotify playlists.
     """
 
-    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> "MatchQueryWithSpotifyPlaylist":
+    async def run(self, ctx: GraphRunContext[GraphState, GraphDeps]) -> Union["MatchQueryWithSpotifyPlaylist", "GenerateSearchQueryNode"]:
         try:
-            playlists, _ = await SpotifyService.search_playlists(query=ctx.state.spotify_search_query)
-            if not playlists:
+            found_playlists, _ = await SpotifyService.search_playlists(query=ctx.state.spotify_search_query)
+            if not found_playlists:
                 ctx.state.retry_count += 1
                 ctx.state.error_info = f"No playlists found for query: {ctx.state.spotify_search_query}"
                 return GenerateSearchQueryNode()
 
-            return MatchQueryWithSpotifyPlaylist(playlists)
+            return MatchQueryWithSpotifyPlaylist(found_playlists)
         except Exception as e:
             raise RuntimeError(f"Error retrieving Spotify playlists: {e}")
 
@@ -94,7 +94,7 @@ class MatchQueryWithSpotifyPlaylist(BaseNode[GraphState, GraphDeps]):
     """
     Matches Spotify playlists against the generated query and filters tracks using an agent.
     """
-    found_playlists: dict
+    found_playlists: list[dict]
 
     playlist_filter_agent = Agent(
         model=decide_llm(),

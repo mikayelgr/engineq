@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17 # Or your preferred version
+    image: pgvector/pgvector:pg17
     container_name: engineq_postgres
     environment:
       POSTGRES_USER: postgres

@@ -26,6 +26,11 @@ dependencies = [
     { name = "sqlalchemy", extra = ["asyncio"] },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "just-bin" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "aio-pika", specifier = ">=9.5.5,<10.0.0" },
@@ -46,6 +51,9 @@ requires-dist = [
     { name = "sqlacodegen", specifier = ">=3.0.0,<4.0.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.38,<3.0.0" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "just-bin", specifier = ">=1.40.0" }]
 
 [[package]]
 name = "aio-pika"
@@ -877,6 +885,17 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/99/1b/72906d554acfeb588332eaaa6f61577705e9ec752ddb486f302dafa292d9/jupyter_core-5.8.1.tar.gz", hash = "sha256:0a5f9706f70e64786b75acba995988915ebd4601c8a52e534a40b51c95f59941", size = 88923, upload-time = "2025-05-27T07:38:16.655Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2f/57/6bffd4b20b88da3800c5d691e0337761576ee688eb01299eae865689d2df/jupyter_core-5.8.1-py3-none-any.whl", hash = "sha256:c28d268fc90fb53f1338ded2eb410704c5449a358406e8a948b75706e24863d0", size = 28880, upload-time = "2025-05-27T07:38:15.137Z" },
+]
+
+[[package]]
+name = "just-bin"
+version = "1.40.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/47/85/c49f7ecd6ee4790c376fd6921db945704c7161d45941e129a86fc1ba5b29/just_bin-1.40.0-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:5fc63b7817e539e79b7b0d0ef8ae913fec9b38d0e4a11c9dad82bfed5d63970f", size = 1730239, upload-time = "2025-03-10T07:03:52.465Z" },
+    { url = "https://files.pythonhosted.org/packages/60/62/410e12011b4a19f9de25981816296323ab5fbc875c520ca0bf8d8196db24/just_bin-1.40.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:e509e4050e8a0f44b782f0ab82108282bf6145a536739941d348ca80a94454a6", size = 1599038, upload-time = "2025-03-10T07:03:54.064Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/20/d51ab63cdc335bde9c0ca02f7d041bbd07429835391fc2cd37f5fa444fc6/just_bin-1.40.0-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.musllinux_1_1_x86_64.whl", hash = "sha256:4c5c34e531bb5b0c9517b4e97afaf293328a9f000f4741dfc239a2fa52942f10", size = 1908867, upload-time = "2025-03-10T07:03:55.069Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/a9/51bbefa1f45f4fdc002f99fa696bd7f16cc78cbf0fb4d1f0b95229f2a58c/just_bin-1.40.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.musllinux_1_1_aarch64.whl", hash = "sha256:fb58d18ad818b55cf66f522a1d83e6c0c8f6faabf8d659c4f4447f378daf7f86", size = 1731810, upload-time = "2025-03-10T07:03:56.151Z" },
 ]
 
 [[package]]

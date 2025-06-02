@@ -39,7 +39,7 @@ class SQLDatabase:
             cls.initialize()
 
         if cls._connection is None or cls._connection.closed:
-            cls._connection = await cls.__engine.connect().start()
+            cls._connection = await cls.__engine.connect().start()  # type: ignore
             cls.__logger.info("New database connection established")
         return cls._connection
 

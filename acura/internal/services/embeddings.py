@@ -7,14 +7,14 @@ class EmbeddingsService:
     """
     Provides methods to create embeddings for tracks using OpenAI's API.
     """
-    __client: AsyncOpenAI = AsyncOpenAI()
+    _client: AsyncOpenAI = AsyncOpenAI()
 
     @classmethod
     async def create_search_query_embedding(cls, search_query: str) -> list[float]:
         """
         Create an embedding for the search query.
         """
-        response = await cls.__client.embeddings.create(
+        response = await cls._client.embeddings.create(
             model="text-embedding-3-large",
             input=f"Search Query: {search_query}",
             dimensions=1024,
@@ -33,7 +33,7 @@ Search Query: {search_query}
 Track Title: {track_title}
 Track Artist: {track_artist}"""
 
-        response = await cls.__client.embeddings.create(
+        response = await cls._client.embeddings.create(
             model="text-embedding-3-large",
             input=embeddable,
             dimensions=1024,

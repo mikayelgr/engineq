@@ -26,3 +26,8 @@ dependencies = [
 [project.scripts]
 generate-db-models = "acura.scripts.generate_models:run_sqlacodegen"
 dbmate-cli = "acura.scripts.run_dbmate_cli:main"
+
+[dependency-groups]
+dev = [
+    "just-bin>=1.40.0",
+]

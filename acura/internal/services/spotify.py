@@ -16,9 +16,9 @@ S_CLIENT_SECRET = Config().SPOTIFY_CLIENT_SECRET
 
 @dataclass
 class SpotifyService:
-    __bearer_token: Optional[str] = None
-    __refresh_token: Optional[str] = None
-    __token_expiration_date: Optional[datetime.datetime] = None
+    _bearer_token: Optional[str] = None
+    _refresh_token: Optional[str] = None
+    _token_expiration_date: Optional[datetime.datetime] = None
     _client: httpx.AsyncClient = httpx.AsyncClient(base_url=S_BASE_URL)
     # Singleton instance
     _instance: Optional[SpotifyService] = None
@@ -32,12 +32,12 @@ class SpotifyService:
 
         # Check if the bearer token is expired or even exists. This is required
         # for all API calls.
-        if cls.__token_expired():
-            await cls.__set_token()
+        if cls._token_expired():
+            await cls._set_token()
 
         r = await cls._client.get(
             f"/v1/tracks/{id}",
-            headers={"Authorization": f"Bearer {cls.__bearer_token}"}
+            headers={"Authorization": f"Bearer {cls._bearer_token}"}
         )
 
         r.raise_for_status()
@@ -51,8 +51,8 @@ class SpotifyService:
         """
         # Check if the bearer token is expired or even exists. This is required
         # for all API calls.
-        if cls.__token_expired():
-            await cls.__set_token()
+        if cls._token_expired():
+            await cls._set_token()
 
         # Set the target URL for the API call. If `next_url` is provided, use it
         # to get the next page of results. Otherwise, use the default URL.
@@ -61,7 +61,7 @@ class SpotifyService:
         while total_limit is None or len(found_tracks) < total_limit:
             r = await cls._client.get(
                 target_url,
-                headers={"Authorization": f"Bearer {cls.__bearer_token}"}
+                headers={"Authorization": f"Bearer {cls._bearer_token}"}
             )
 
             r.raise_for_status()
@@ -84,40 +84,6 @@ class SpotifyService:
                 break
 
         return found_tracks
-        # # Check if the bearer token is expired or even exists. This is required
-        # # for all API calls.
-        # if cls.__token_expired():
-        #     await cls.__set_token()
-
-        # # Set the target URL for the API call. If `next_url` is provided, use it
-        # # to get the next page of results. Otherwise, use the default URL.
-        # target_url = f"/v1/playlists/{id}/tracks"
-        # found_tracks = []
-        # while True:
-        #     r = await cls._client.get(
-        #         target_url,
-        #         headers={"Authorization": f"Bearer {cls.__bearer_token}"}
-        #     )
-
-        #     r.raise_for_status()
-        #     json: dict = r.json()
-        #     # Append the entries to the list
-        #     found_tracks.extend(
-        #         map(lambda entry: entry["track"], json["items"]))
-        #     if json["next"]:
-        #         # Parse the next URL to get the path and query parameters
-        #         parsed_url = urllib.parse.urlparse(json["next"])
-        #         path = parsed_url.path
-        #         query = parsed_url.query
-
-        #         # Use the path and query parameters to set the target URL for the next request
-        #         target_url = path
-        #         if query:
-        #             target_url += '?' + query
-        #     else:
-        #         break
-
-        # return found_tracks
 
     @classmethod
     async def search_playlists(cls, query: str | None = None, next_url: str | None = None, limit: int = 10) -> tuple[list[dict], str | None]:
@@ -127,8 +93,8 @@ class SpotifyService:
 
         # Check if the bearer token is expired or even exists. This is required
         # for all API calls.
-        if cls.__token_expired():
-            await cls.__set_token()
+        if cls._token_expired():
+            await cls._set_token()
 
         if next_url is not None:
             # Use the next URL to get the next page of results
@@ -138,13 +104,13 @@ class SpotifyService:
             r = await cls._client.get(
                 path,
                 params=query,
-                headers={"Authorization": f"Bearer {cls.__bearer_token}"}
+                headers={"Authorization": f"Bearer {cls._bearer_token}"}
             )
         else:
             r = await cls._client.get(
                 "/v1/search",
                 params={"q": query, "type": "playlist", "limit": limit},
-                headers={"Authorization": f"Bearer {cls.__bearer_token}"}
+                headers={"Authorization": f"Bearer {cls._bearer_token}"}
             )
 
         r.raise_for_status()
@@ -152,16 +118,16 @@ class SpotifyService:
         return (r["playlists"]["items"], r["playlists"]["next"])
 
     @classmethod
-    def __token_expired(cls) -> bool:
+    def _token_expired(cls) -> bool:
         """
         Check if the bearer token is expired or even exists.
         """
-        if cls.__bearer_token is None:
+        if cls._bearer_token is None:
             return True
         return datetime.datetime.now() >= cls.__token_expiration_date
 
     @classmethod
-    async def __set_token(cls):
+    async def _set_token(cls):
         logging.info("Setting Spotify API token...")
 
         """
