@@ -112,15 +112,7 @@ def ensure_dbmate_available():
         download_and_extract(asset_filename, url, is_compressed, exe_name_in_archive)
     else:
         print(f"dbmate already exists at {DBMATE_PATH}")
-        # Simple version check could be added here if needed:
-        # try:
-        #     result = subprocess.run([DBMATE_PATH, "--version"], capture_output=True, text=True)
-        #     if DBMATE_VERSION.lstrip('v') not in result.stdout:
-        #         print(f"Existing dbmate version ({result.stdout.strip()}) does not match desired ({DBMATE_VERSION}). Re-downloading.")
-        #         asset_filename, url, is_compressed, exe_name_in_archive = get_asset_details()
-        #         download_and_extract(asset_filename, url, is_compressed, exe_name_in_archive)
-        # except Exception as e:
-        #     print(f"Could not check dbmate version, assuming it's okay: {e}")
+        # Version check functionality can be implemented here if needed in the future.
 
 
 def main():
