@@ -7,5 +7,7 @@ ENV PATH="~/.local/bin/:$PATH"
 # UV is a tool for managing Python virtual environments and is used widely across this project.
 RUN pip install uv
 RUN uv sync
+# Run pending database migrations using dbmate
+RUN uv just dbmate up
 
 ENTRYPOINT [ "uv", "run", "just", "start" ]
