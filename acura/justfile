@@ -1,0 +1,28 @@
+set dotenv-load
+
+ensure_dbmate_installed:
+    #!/bin/bash
+    if [ -f "/tmp/dbmate" ]; then
+        echo "dbmate already exists, skipping download"
+    else
+        echo "Downloading dbmate..."
+        curl -fsSL -o /tmp/dbmate https://github.com/amacneil/dbmate/releases/latest/download/dbmate-linux-amd64
+        chmod +x /tmp/dbmate
+    fi
+
+    if [ -x "/tmp/dbmate" ]; then
+        echo "dbmate is ready to use"
+    else
+        echo "Error: dbmate is not executable"
+        exit 1
+    fi
+
+sql:
+    sqlacodegen $MIGRATION_URL --outfile ./internal/models/codegen/models.py
+
+dbmate command: ensure_dbmate_installed
+    /tmp/dbmate -e "MIGRATION_URL" -d ../migrations {{command}}
+    python scripts/generate_models.py
+
+start:
+    python .
