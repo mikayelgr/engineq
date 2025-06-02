@@ -42,4 +42,36 @@ ALTER TABLE playback
 RENAME COLUMN sid TO subscriber_id;
 
 -- migrate:down
--- Note: This operation is irreversible
+
+-- 1. Rename subscriber_id back to sid on playback
+ALTER TABLE playback RENAME COLUMN subscriber_id TO sid;
+
+-- 2. Drop the new FK on playback.suggestion_id -> suggestions(id)
+ALTER TABLE playback DROP CONSTRAINT IF EXISTS playback_suggestion_id_fkey;
+
+-- 3. Drop the new PK on suggestions(id) (which was named suggestions_pkey in the 'up' script)
+ALTER TABLE suggestions DROP CONSTRAINT IF EXISTS suggestions_pkey;
+
+-- 4. Restore old PK on suggestions(pid, tid)
+ALTER TABLE suggestions ADD CONSTRAINT suggestions_pkey PRIMARY KEY (pid, tid);
+
+-- 5. Add back last_pid and last_tid columns to playback
+ALTER TABLE playback ADD COLUMN last_pid INTEGER;
+ALTER TABLE playback ADD COLUMN last_tid INTEGER;
+
+-- 6. Populate last_pid and last_tid from suggestion_id
+-- This relies on suggestions.id, suggestions.pid, and suggestions.tid still being available.
+-- Ensure that the suggestions table has not been altered and that the id, pid, and tid columns are intact.
+-- The following UPDATE statement assumes that each playback.suggestion_id corresponds to a valid suggestions.id.
+UPDATE playback p
+SET last_pid = s.pid, last_tid = s.tid
+FROM suggestions s
+WHERE p.suggestion_id = s.id;
+
+-- 7. Restore FK on playback(last_pid, last_tid) -> suggestions(pid, tid)
+-- This assumes the original FK name was playback_last_pid_last_tid_fkey, which is stated in the 'up' script
+ALTER TABLE playback ADD CONSTRAINT playback_last_pid_last_tid_fkey
+FOREIGN KEY (last_pid, last_tid) REFERENCES suggestions(pid, tid);
+
+-- 8. Drop the suggestion_id column from playback
+ALTER TABLE playback DROP COLUMN suggestion_id;
