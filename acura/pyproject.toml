@@ -26,10 +26,3 @@ dependencies = [
 [project.scripts]
 generate-db-models = "acura.scripts.generate_models:run_sqlacodegen"
 dbmate-cli = "acura.scripts.run_dbmate_cli:main"
-
-[tool.poetry]
-package-mode = false
-
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"

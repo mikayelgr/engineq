@@ -51,37 +51,7 @@ cd <repository_name>
 
 ### 2. Dependent Services
 
-It's highly recommended to use Docker Compose to manage backing services. Create a `docker-compose.yml` file in the project root (or use an existing one if provided).
-
-**Example `docker-compose.yml`:**
-```yaml
-version: '3.8'
-services:
-  postgres_db:
-    image: postgres:15 # Or your preferred version
-    container_name: engineq_postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: engineq
-    ports:
-      - "5432:5432" # Expose PostgreSQL on port 5432
-    volumes:
-      - engineq_postgres_data:/var/lib/postgresql/data
-
-  rabbitmq:
-    image: rabbitmq:3-management # Includes management UI
-    container_name: engineq_rabbitmq
-    ports:
-      - "5672:5672" # AMQP port
-      - "15672:15672" # Management UI port (optional)
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-
-volumes:
-  engineq_postgres_data:
-```
+It's highly recommended to use Docker Compose to manage backing services. You can find all docker-related files inside the `docker` folder in the project's root.
 
 Start these services:
 ```bash
