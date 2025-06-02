@@ -9,4 +9,4 @@ create table playback (
 );
 
 -- migrate:down
-drop table playbacks;
+drop table playback;
