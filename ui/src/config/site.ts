@@ -1,13 +1,23 @@
+// EngineQ: An AI-enabled music management system.
+// Copyright (C) 2025  Mikayel Grigoryan
+// 
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+// 
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+// 
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+// 
+// For inquiries, contact: michael.grigoryan25@gmail.com
 export type SiteConfig = typeof siteConfig;
 
 export const siteConfig = {
   title: "EngineQ - Intelligence-Enabled Music Management",
   description: "Manage your business's music with EngineQ",
-  // links: {
-  //   github: "https://github.com/heroui-inc/heroui",
-  //   twitter: "https://twitter.com/hero_ui",
-  //   docs: "https://heroui.com",
-  //   discord: "https://discord.gg/9b6yyZKmH4",
-  //   sponsor: "https://patreon.com/jrgarciadev",
-  // },
 };

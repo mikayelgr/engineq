@@ -1,3 +1,23 @@
+"""
+EngineQ: An AI-enabled music management system.
+Copyright (C) 2025  Mikayel Grigoryan
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+For inquiries, contact: michael.grigoryan25@gmail.com
+"""
+
 from pydantic_ai import Agent
 import logging
 from dataclasses import dataclass
@@ -58,7 +78,8 @@ Generate concise, unique music search queries based on a business owner's prompt
             logging.getLogger(__name__).error(
                 f"Error in previous step: {ctx.state.error_info}")
         if ctx.state.retry_count >= MAX_RETRIES:
-            raise RuntimeError(f"Maximum retries ({MAX_RETRIES}) exceeded for query: `{ctx.state.spotify_search_query}`")
+            raise RuntimeError(
+                f"Maximum retries ({MAX_RETRIES}) exceeded for query: `{ctx.state.spotify_search_query}`")
 
         try:
             prompts = await PromptsDAO.get_subscriber_prompts_by_sid(ctx.deps.sid)
@@ -198,7 +219,8 @@ class SearchAndVerifyYoutubeAndSaveNode(BaseNode[GraphState, GraphDeps]):
                         break
 
             except Exception as e:
-                raise RuntimeError(f"Error searching and verifying YouTube for track '{track['name']}']: {e}")
+                raise RuntimeError(
+                    f"Error searching and verifying YouTube for track '{track['name']}']: {e}")
 
         return End(n_added_tracks)
 
@@ -249,8 +271,10 @@ class SourceSelectionRouterNode(BaseNode[GraphState, GraphDeps]):
         all_similar_tracks_cos = await TracksDAO.get_similar_track_ids(search_embedding)
         past_1_hour_suggestions = await SuggestionsDAO.get_past_n_hours_suggestions(ctx.deps.sid)
         similar_track_ids = {t.id for t in all_similar_tracks_cos}
-        suggestions_from_past_hour = [s for s in past_1_hour_suggestions if s.tid in similar_track_ids]
-        ratio = len(suggestions_from_past_hour) / len(all_similar_tracks_cos) if all_similar_tracks_cos else 0
+        suggestions_from_past_hour = [
+            s for s in past_1_hour_suggestions if s.tid in similar_track_ids]
+        ratio = len(suggestions_from_past_hour) / \
+            len(all_similar_tracks_cos) if all_similar_tracks_cos else 0
         if (len(all_similar_tracks_cos) < 100) or (ratio > 0.5):
             return SearchSpotifyPlaylistsNode()
         return ReuseExistingDataNode(search_embedding=search_embedding)
@@ -283,8 +307,10 @@ class ReuseExistingDataNode(BaseNode[GraphState, GraphDeps]):
         # Step 3: Get the suggestions from the past hour
         past_hour_suggestions = await SuggestionsDAO.get_past_n_hours_suggestions(ctx.deps.sid)
         # Step 4: Filter similar_tracks to exclude tracks from past hour suggestions
-        past_hour_track_ids = {suggestion.tid for suggestion in past_hour_suggestions}
-        filtered_tracks = [track for track in similar_tracks if track.id not in past_hour_track_ids]
+        past_hour_track_ids = {
+            suggestion.tid for suggestion in past_hour_suggestions}
+        filtered_tracks = [
+            track for track in similar_tracks if track.id not in past_hour_track_ids]
 
         # Add filtered tracks to the playlist
         n_added_tracks = 0
@@ -293,7 +319,8 @@ class ReuseExistingDataNode(BaseNode[GraphState, GraphDeps]):
                 await SuggestionsDAO.add_track_to_suggestions(playlist.id, track.id)
                 n_added_tracks += 1
             except Exception as e:
-                logging.getLogger(__name__).error(f"Error adding track '{track.title}' to playlist: {e}")
+                logging.getLogger(__name__).error(
+                    f"Error adding track '{track.title}' to playlist: {e}")
 
         return End(n_added_tracks)
 

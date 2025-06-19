@@ -16,16 +16,10 @@ dependencies = [
     "python-levenshtein (>=0.27.1,<0.28.0)",
     "python-json-logger (>=3.3.0,<4.0.0)",
     "openai (>=1.70.0,<2.0.0)",
-    "ipython (>=9.0.2,<10.0.0)",
-    "ipykernel (>=6.29.5,<7.0.0)",
     "flake8 (>=7.2.0,<8.0.0)",
     "pgvector (>=0.4.0,<0.5.0)",
-    "requests (>=2.0.0,<3.0.0)"
+    "requests (>=2.0.0,<3.0.0)",
 ]
-
-[project.scripts]
-generate-db-models = "acura.scripts.generate_models:run_sqlacodegen"
-dbmate-cli = "acura.scripts.run_dbmate_cli:main"
 
 [dependency-groups]
 dev = [
