@@ -59,6 +59,7 @@ Acura requires the following environment variables to be set (e.g., in an `acura
 *   **`DEBUG`**: Set to `1` for debug logging, `0` for production. (Default: `1` in example)
 *   **`POSTGRES_URL`**: PostgreSQL connection string.
     *   *Example:* `postgresql+asyncpg://postgres:postgres@localhost:5432/engineq`
+*   **`MIGRATION_URL`**: Same as `POSTGRES_URL` but append `?sslmode=disable` in the end of the URL if running locally with SSL disabled for PostgreSQL.
 *   **`AMQP_URL`**: RabbitMQ connection string.
     *   *Example:* `amqp://guest:guest@localhost:5672/`
 *   **`OPENAI_API_KEY`**: Your API key for OpenAI services (LLMs and embeddings).
@@ -77,22 +78,16 @@ Acura requires the following environment variables to be set (e.g., in an `acura
 3.  **Environment Variables:** Copy `acura/.env.example` to `acura/.env` and populate it with your actual credentials and URLs.
 4.  **Install Dependencies:** From the `acura/` directory:
     ```bash
-    uv pip sync pyproject.toml
+    uv venv
+    source .venv/bin/activate
+    uv sync
     ```
-5.  **Run Database Migrations:** From the **project root** directory:
+5.  **Start the Acura Service:** From the `acura/` directory:
     ```bash
-    uv run dbmate-cli up
+    uv run just start
     ```
-    (This uses the script defined in `acura/pyproject.toml` which manages `dbmate`.)
-6.  **Generate Database Models (Optional):** If you've made schema changes and run migrations, regenerate the SQLAlchemy models. From the `acura/` directory:
-    ```bash
-    uv run generate-db-models
-    ```
-7.  **Start the Acura Service:** From the `acura/` directory:
-    ```bash
-    uv run python __main__.py
-    ```
-    Acura will connect to RabbitMQ and PostgreSQL and start listening for messages on the "acura" queue.
+    Acura will connect to RabbitMQ and PostgreSQL and start listening for messages on the "acura" queue. Note that pending migrations will be
+    applied automatically in this case.
 
 ## Containerization
 

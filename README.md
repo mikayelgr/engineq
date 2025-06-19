@@ -38,3 +38,52 @@ This monorepo hosts Project EngineQ, a sophisticated music curation and playback
 *   **Node.js**: For the `ui/` frontend (check `ui/package.json` for specific version, e.g., >=18.x).
 *   **`npm` or `yarn`**: For managing frontend dependencies.
 *   **Docker & Docker Compose**: Recommended for running dependent services like PostgreSQL and RabbitMQ, and for containerized deployment.
+
+## Architecture Overview Diagram
+
+```mermaid
+flowchart TD
+ subgraph Pipeline["Pipeline"]
+        E1["Generate a Search Query"]
+        D["MusicDiscoveryPipeline"]
+        E2["Get Recommendations from Spotify"]
+        E3["Extract Artist and Track Names"]
+        E4["Search for Similar Tracks"]
+        E5["Get Context via LLM"]
+        E6["Filter Tracks Similarity"]
+        E7["Save Curation Result"]
+  end
+    A["External Trigger"] -- Publishes CurationRequest --> B("RabbitMQ Queue")
+    B -- Consumes message --> C["<b>Acura Worker Service</b>"]
+    C -- Executes Pipeline --> D
+    D --> E1
+    E1 --> E2
+    E2 --> E3
+    E3 --> E4
+    E4 --> E5
+    E5 --> E6
+    E6 --> E7
+    E2 -- API Call --> F1["Spotify API"]
+    E4 -- API Call --> F2["Brave Search API"]
+    E5 -- API Call --> F3["LLM API<br>OpenAI/Ollama"]
+    E7 -- Write Data --> G["PostgreSQL Database"]
+    H["<b>UI Service</b>"] -- Fetches Data --> G
+    H -- Sends Request --> I["Tracklist API"]
+    I -- Queries --> G
+    I -- Publishes Message --> B
+    H -- Displays --> J["Dashboard"]
+    J --> K["Playback Queue"] & L["Current Playback Info"] & M["Stats Group"]
+
+    style B fill:#FF6600,stroke:#333,stroke-width:2px
+    style C stroke-width:4px,stroke-dasharray: 5
+    style F1 fill:#1DB954,stroke:#333,stroke-width:2px,color:#fff
+    style F2 fill:#FF5722,stroke:#333,stroke-width:2px,color:#fff
+    style F3 fill:#4A90E2,stroke:#333,stroke-width:2px,color:#fff
+    style G fill:#336791,stroke:#333,stroke-width:2px,color:#fff
+    style H stroke-width:4px,stroke-dasharray: 5
+    style I fill:#4CAF50,stroke:#333,stroke-width:2px,color:#fff
+    style J fill:#FFC107,stroke:#333,stroke-width:2px,color:#000
+    style K fill:#FFEB3B,stroke:#333,stroke-width:2px,color:#000
+    style L fill:#FFEB3B,stroke:#333,stroke-width:2px,color:#000
+    style M fill:#FFEB3B,stroke:#333,stroke-width:2px,color:#000
+```
